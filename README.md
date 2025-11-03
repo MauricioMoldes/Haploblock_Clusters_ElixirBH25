@@ -187,7 +187,7 @@ We use TWILIGHT (https://github.com/TurakhiaLab/TWILIGHT), it requires one fasta
 NOTE: We previously generated haploblock phased sequences, e.g., `NA18531_chr6_region_711055-761032_hap1.fa` with headers like ">chr6:711055-761032", but each sequence in the merged fasta file must have a unique header, this can be done with:
 ```
 mkdir data/CHB/haploblock_phased_seq_random5
-mv data/CHB/NA* data/CHB/haploblock_phased_seq_random5/.  ## or HG* for GBR
+mv data/CHB/NA* data/CHB/haploblock_phased_seq_random5/.  ## or HG* for GBR/PUR
 # generates one fasta file per region in output dir
 mkdir data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
 ./merge_fasta_per_region.sh data/CHB/haploblock_phased_seq_random5 data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
