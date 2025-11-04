@@ -106,7 +106,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out, variant_cou
 
     logger.info("Parsing haploblock boundaries")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
-    logger.info("Found %i haploblock boundaries", len(haploblock_boundaries))
+    logger.info("Found %i haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
     samples = data_parser.parse_samples(samples_file)
