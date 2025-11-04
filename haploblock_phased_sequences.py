@@ -269,7 +269,7 @@ def calculate_mmseq_params(start, end, region_vcf):
     - region_vcf: pathlib.Path to VCF file corresponding to the region
 
     returns:
-    - haploblock2min_id: dict, key=(start, end), value=min identity
+    - min_id: float, min identity
     """
     # count number of variants in the region
     num_variants = int(subprocess.run(["bcftools", "view",
@@ -279,12 +279,10 @@ def calculate_mmseq_params(start, end, region_vcf):
                                        capture_output=True,
                                        text=True).stdout.count('\n'))
 
-    haploblock2min_id = {}
     haploblock_length = int(end) - int(start)
     min_id = 1 - (num_variants / haploblock_length)
-    haploblock2min_id[(start, end)] = min_id
 
-    return(haploblock2min_id)
+    return(min_id)
 
 
 def save_mmseq_params(haploblock2min_id, out_file):
@@ -322,13 +320,15 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out, mmseq_param
     samples = parse_samples_from_vcf(vcf)
     logger.info("Found %i samples", len(samples))
 
+    # dict for MMSeq2 params
+    haploblock2min_id = {}
+
     for (start, end) in haploblock_boundaries:
         logger.info(f"Generating phased VCF for haploblock {start}-{end}")
         region_vcf = extract_region_from_vcf(vcf, chr, chr_map, start, end, out)
 
-        # calculate params for MMSeq2
-        haploblock2min_id = calculate_mmseq_params(start, end, region_vcf)
-        save_mmseq_params(haploblock2min_id, mmseq_params_file)
+        # calculate 
+        haploblock2min_id[(start, end)] = calculate_mmseq_params(start, end, region_vcf)
 
         logger.info(f"Generating phased fasta for haploblock {start}-{end}")
         region_fasta = extract_region_from_fasta(ref, chr, start, end, out)
@@ -339,6 +339,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out, mmseq_param
             sample_vcf = extract_sample_from_vcf(region_vcf, sample, out)
 
             (sample_hap1, sample_hap2) = generate_consensus_fasta(region_fasta, sample_vcf, out)
+    
+    save_mmseq_params(haploblock2min_id, mmseq_params_file)
 
 
 if __name__ == "__main__":
