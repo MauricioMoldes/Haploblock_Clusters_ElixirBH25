@@ -93,6 +93,34 @@ def parse_samples(samples_file):
     return(samples)
 
 
+def parse_samples_from_vcf(vcf):
+    """
+    Parse samples file for a population VCF from 1000Genomes
+
+    arguments:
+    - vcf file
+
+    returns:
+    - list of sample names
+    """
+    samples = []
+
+    try:
+        f = open(vcf, 'r')
+    except Exception as e:
+        logger.error("Opening provided vcf file %s: %s", vcf, e)
+        raise Exception("Cannot open provided vcf file")
+    
+    samples = subprocess.run(["bcftools", "query",
+                              "-l",
+                              vcf],
+                              check=True,
+                              capture_output=True,
+                              text=True).stdout.splitlines()
+
+    return(samples)
+
+
 def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
     """
     Extract a specific region from a VCF file
@@ -254,7 +282,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
     logger.info("Found %i haploblock boundaries", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
-    samples = parse_samples(samples_file)
+    # samples = parse_samples(samples_file)
+    samples = parse_samples_from_vcf(vcf)
     logger.info("Found %i samples", len(samples))
 
     for (start, end) in haploblock_boundaries:
