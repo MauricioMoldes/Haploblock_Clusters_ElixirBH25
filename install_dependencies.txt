@@ -26,4 +26,5 @@ sudo ln -s ~/htslib-1.22.1/tabix .
 # MMSeqs2
 Download a binary from https://dev.mmseqs.com/latest/
 tar -xvzf mmseqs-linux-avx2.tar.gz
+cd /usr/bin
 ln -s ~/Software/mmseqs/bin/mmseqs
