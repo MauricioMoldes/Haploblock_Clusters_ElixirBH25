@@ -259,7 +259,43 @@ def generate_consensus_fasta(fasta, vcf, out):
     return(output_hap1, output_hap2)
 
 
-def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
+def calculate_mmseq_params(start, end, region_vcf):
+    """
+    Calculate parameters for MMSeq2 clustering: min identity
+    
+    arguments:
+    - start: int start position of haploblock
+    - end: int end position of haploblock
+    - region_vcf: pathlib.Path to VCF file corresponding to the region
+
+    returns:
+    - haploblock2min_id: dict, key=(start, end), value=min identity
+    """
+    # count number of variants in the region
+    num_variants = int(subprocess.run(["bcftools", "view",
+                                       "-H",
+                                       region_vcf],
+                                       check=True,
+                                       capture_output=True,
+                                       text=True).stdout.count('\n'))
+
+    haploblock2min_id = {}
+    haploblock_length = int(end) - int(start)
+    min_id = 1 - (num_variants / haploblock_length)
+    haploblock2min_id[(start, end)] = min_id
+
+    return(haploblock2min_id)
+
+
+def save_mmseq_params(haploblock2min_id, out_file):
+    with open(out_file, 'w') as f:
+        # header
+        f.write("START\tEND\tMIN_ID\n")
+        for (start, end) in haploblock2min_id:
+            f.write(str(start) + "\t" + str(end) + "\t" + str(haploblock2min_id[(start, end)]) + "\n")
+
+
+def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out, mmseq_params_file):
     # sanity check
     if not os.path.exists(boundaries_file):
         logger.error(f"File {boundaries_file} does not exist.")
@@ -289,6 +325,10 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
     for (start, end) in haploblock_boundaries:
         logger.info(f"Generating phased VCF for haploblock {start}-{end}")
         region_vcf = extract_region_from_vcf(vcf, chr, chr_map, start, end, out)
+
+        # calculate params for MMSeq2
+        haploblock2min_id = calculate_mmseq_params(start, end, region_vcf)
+        save_mmseq_params(haploblock2min_id, mmseq_params_file)
 
         logger.info(f"Generating phased fasta for haploblock {start}-{end}")
         region_fasta = extract_region_from_fasta(ref, chr, start, end, out)
@@ -343,6 +383,10 @@ if __name__ == "__main__":
                         help='Path to output folder',
                         type=pathlib.Path,
                         required=True)
+    parser.add_argument('--mmseq_params_file',
+                        help='Path to a file to save MMSeq2 parameters',
+                        type=pathlib.Path,
+                        required=True)
 
     args = parser.parse_args()
 
@@ -353,7 +397,8 @@ if __name__ == "__main__":
              ref=args.ref,
              chr_map=args.chr_map,
              chr=args.chr,
-             out=args.out)
+             out=args.out,
+             mmseq_params_file=args.mmseq_params_file)
 
     except Exception as e:
         # details on the issue should be in the exception name, print it to stderr and die
