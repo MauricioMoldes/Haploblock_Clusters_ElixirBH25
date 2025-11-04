@@ -25,7 +25,7 @@ File `aau1043_datas3` contains averaged maternal and paternal recombination rate
 
 3. 1000Genomes, HGSVC, Phase 3
 
-Phased VCF file of chromosome 6 for Han Chinese in Beijing, China (https://www.internationalgenome.org/data-portal/population/CHB):
+Phased VCF file of chromosome 6 (2548 samples):
 ```
 wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
 ```
@@ -167,37 +167,48 @@ python haploblock_boundaries.py --recombination_file data/Halldorsson2019/aau104
 
 See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for 1398 haploblock boundaries (high recombination rates defined as **rate > 10*average**).
 
-#### 2. Generate phased VCFs and haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files):
+#### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files):
 ```
-python haploblock_phased_sequences.py --boundaries_file data/haploblock_boundaries_chr6.tsv --samples_file data/igsr-chb.tsv.tsv --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz --ref data/chr6.fa.gz --chr_map data/chr_map --chr 6 --out data/CHB/
+python haploblock_phased_sequences.py \
+    --boundaries_file data/haploblock_boundaries_chr6.tsv \
+    --samples_file data/igsr-chb.tsv.tsv \
+    --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+    --ref data/chr6.fa.gz \
+    --chr_map data/chr_map \
+    --chr 6 \
+    --out data/CHB/ \
+    --mmseq_params_file data/CHB/mmseq2_params.tsv
 ```
 
 This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf).
 
-NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it by --chr_map.
+NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 
 Then it generates a consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref).
 
-Testing: We generated haploblock phased sequences (format: sample_chr_region_start-end_hap1/2.fa) for all samples from the CBH, PUR and GBR populations for 5 random haploblocks of chromosome 6.
-
-#### 3. Population-specific haploblock alignments ?
-
-We use TWILIGHT (https://github.com/TurakhiaLab/TWILIGHT), it requires one fasta file with haploblock phased sequences
+We also calculate min identity per haploblock for MMSeq2 clustering, they will be saved in --mmseq_params_file.
 
 NOTE: We previously generated haploblock phased sequences, e.g., `NA18531_chr6_region_711055-761032_hap1.fa` with headers like ">chr6:711055-761032", but each sequence in the merged fasta file must have a unique header, this can be done with:
 ```
 mkdir data/CHB/haploblock_phased_seq_random5
 mv data/CHB/NA* data/CHB/haploblock_phased_seq_random5/.  ## or HG* for GBR/PUR
-# generates one fasta file per region in output dir
+
+# generate one haploblock phased fasta file
 mkdir data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
 ./merge_fasta_per_region.sh data/CHB/haploblock_phased_seq_random5 data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
-LOG: Merged FASTA written to: data/CHB_chr6_random10/CHB_chr6_random5_merged.fa
-```
-
-```
 tar -zcvf data/CHB/haploblock_phased_seq_random5/CHB_haploblock_phased_seq_merged.tar.gz data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
 ```
 
+We generated haploblock phased sequences (format: sample_chr_region_start-end_hap1/2.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
+- 10 random haploblocks of chr6
+- 5 random haploblocks of chr 6
+- haploblock overlapping with TNFa
++ haploblock phased sequences for TNFa for all populations
+
+
+#### 3. Population-specific haploblock alignments ?
+
+We use TWILIGHT (https://github.com/TurakhiaLab/TWILIGHT), it requires one fasta file with haploblock phased sequences
 ```
 snakemake --cores 8 --config TYPE=n SEQ=/home/shadeform/Elixir-BH-2025/data/haploblock_phased_seq_random5/CHB_chr6_random10_merged.fa OUT=CHB_chr6_random5.aln
 ```
