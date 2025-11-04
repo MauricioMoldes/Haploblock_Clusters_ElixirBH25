@@ -182,7 +182,7 @@ python haploblock_phased_sequences.py \
     --variant_counts_file data/CHB/variant_counts.tsv
 ```
 
-This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf).
+This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Note that that the regions of interest can be specified in the boundaries file and samples in the samples file.
 
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 
@@ -190,7 +190,7 @@ Then it generates a consensus haploblock phased sequences for both haploids of e
 
 We also calculate the mean and average of the number of variants per haploblock, they are saved in --variant_counts_file (with 4 columns: START, END, MEAN, STDEV)
 
-We previously generated haploblock phased sequences, e.g., `NA18531_chr6_region_711055-761032_hap1.fa` with headers like ">chr6:711055-761032", but each sequence in the merged fasta file must have a unique header. We do this and generate one merged phased fasta file per haploblock:
+We previously generated haploblock phased sequences, e.g., `NA18531_chr6_region_711055-761032_hap1.fa` with headers like ">chr6:711055-761032", but each sequence in the merged fasta file must have a unique header. During the hackathon, we do this for 5 random haploblocks and generate one merged phased fasta file per haploblock:
 ```
 mkdir data/CHB/haploblock_phased_seq_random5
 mv data/CHB/NA* data/CHB/haploblock_phased_seq_random5/.  ## or HG* for GBR/PUR
@@ -199,18 +199,15 @@ mv data/CHB/NA* data/CHB/haploblock_phased_seq_random5/.  ## or HG* for GBR/PUR
 mkdir data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
 ./merge_fasta_per_region.sh data/CHB/haploblock_phased_seq_random5 data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
 tar -zcvf data/CHB/haploblock_phased_seq_random5/CHB_haploblock_phased_seq_merged.tar.gz data/CHB/haploblock_phased_seq_random5/haploblock_phased_seq_merged
+
+# we recommend keeping only the merged phased fasta file for all samples
+rm data/CHB/haploblock_phased_seq_random5/NA*  ## or HG* for GBR/PUR
 ```
 
-We generated haploblock phased sequences (format: sample_chr_region_start-end_hap1/2.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
-- 10 random haploblocks of chr6
-- 5 random haploblocks of chr 6
-- haploblock overlapping with TNFa
-+ haploblock phased sequences for TNFa for all populations
 
+#### 3. Generate haploblock clusters
 
-#### 3. Haploblock clusters
-
-MMSeqs2
+Cluster haploblock phased sequences using MMSeqs2:
 ```
 mkdir -p data/clusters/tmp
 ```
@@ -219,13 +216,33 @@ mkdir -p data/clusters/tmp
 python clusters.py --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv --merged_consensus_dir data/CHB/haploblock_phased_seq_TNFa/haploblock_phased_seq_merged --variant_counts data/CHB/TNFa_CHB_variant_counts.tsv --chr 6 --out data/clusters/ --temp_dir data/clusters/tmp/
 ```
 
-see `chr6_31480875-31598421_cluster.tsv`
+This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. It runs MMSeqs2 to generate for each haploblock a TSV file with two columns: cluster representative, cluster member
+
+
+# Results
+
+We generated haploblock phased sequences (format: sample_chr_region_start-end_hap1/2.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
+- 10 random haploblocks of chr6
+- 5 random haploblocks of chr 6
+- haploblock overlapping with TNFa
+- haploblock overlapping with height genes (TODO ref)
+
++ haploblock phased sequences for TNFa for all populations
+
+We generated haploblock clusters.
+
 
 # Dependencies
 
-Install samtools, bcftools, htslib (https://www.htslib.org/), all must be simlinked in `/usr/bin`. See [install_dependencies.txt](install_dependencies.txt).
+Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin`.
 
-Install MMSeqs2 (https://github.com/soedinglab/MMseqs2)
+See [install_dependencies.txt](install_dependencies.txt) for details.
+
+
+# System requirements
+
+During the hackathon we ran the pipeline on a Linux-based machine with 8 CPU cores and 16 GB of memory.
+
 
 ## Python environment
 
