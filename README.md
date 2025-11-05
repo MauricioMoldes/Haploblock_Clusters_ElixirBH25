@@ -56,7 +56,7 @@ TBD
 
 #### 1. Generate haploblock boundaries for chr6 using the Halldorsson2019 recombination map:
 ```
-python haploblock_boundaries.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr chr6 > data/haploblock_boundaries_chr6.tsv
+python build_haploblocks.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr chr6 > data/haploblock_boundaries_chr6.tsv
 ```
 
 This creates a TSV file (with header) with 2 columns: START END
