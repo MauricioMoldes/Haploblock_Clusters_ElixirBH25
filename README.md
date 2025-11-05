@@ -56,7 +56,7 @@ TBD
 
 #### 1. Generate haploblock boundaries for chr6 using the Halldorsson2019 recombination map:
 ```
-python build_haploblocks.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr chr6 > data/haploblock_boundaries_chr6.tsv
+python build_haploblocks.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr 6 --out data/
 ```
 
 This creates a TSV file (with header) with 2 columns: START END
@@ -81,7 +81,7 @@ This script uses bcftools and bgzip to extract regions corresponding to haploblo
 
 Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
 ```
-./merge_fasta_per_region.sh data/CHB/tmp data/CHB/haploblock_phased_seq_merged
+./merge_fasta_per_region.sh data/CHB/tmp/consensus_fasta data/CHB/haploblock_phased_seq_merged
 ```
 
 

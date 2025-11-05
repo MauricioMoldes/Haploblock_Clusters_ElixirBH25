@@ -79,27 +79,27 @@ def parse_recombination_rates(recombination_file, chromosome):
     return(haploblock_boundaries)
 
 
-def haploblocks_to_TSV(haploblock_boundaries):
+def haploblocks_to_TSV(haploblock_boundaries, chr, out):
     '''
-    Print haploblock boundaries to stdout in TSV format, 2 columns: start end
+    Save haploblock boundaries to a TSV file, 2 columns: start end
 
     arguments:
     - haploblock_boundaries: list of tuples with haploblock boundaries (start, end)
     '''
-    # header
-    print("START\tEND")
+    with open(os.path.join(out, f"haploblock_boundaries_chr{chr}.tsv"), 'w') as f:
+        # header
+        f.write("START\tEND\n")
+        for (start, end) in haploblock_boundaries:
+            f.write(str(start) + "\t" + str(end) + "\n")
 
-    for (start, end) in haploblock_boundaries:
-        print(str(start) + "\t" + str(end))
 
-
-def main(recombination_file, chromosome):
+def main(recombination_file, chromosome, out):
 
     logger.info("Parsing recombination file")
     haploblock_boundaries = parse_recombination_rates(recombination_file, chromosome)
     
-    logger.info("Printing haploblock boundaries")
-    haploblocks_to_TSV(haploblock_boundaries)
+    logger.info("Saving haploblock boundaries")
+    haploblocks_to_TSV(haploblock_boundaries, chromosome, out)
 
 
 if __name__ == "__main__":
@@ -124,12 +124,17 @@ if __name__ == "__main__":
                         help='chromosome',
                         type=str,
                         required=True)
+    parser.add_argument('--out',
+                        help='Path to output folder',
+                        type=pathlib.Path,
+                        required=True)
 
     args = parser.parse_args()
 
     try:
         main(recombination_file=args.recombination_file,
-             chromosome=args.chr)
+             chromosome=args.chr,
+             out=args.out)
 
     except Exception as e:
         # details on the issue should be in the exception name, print it to stderr and die
