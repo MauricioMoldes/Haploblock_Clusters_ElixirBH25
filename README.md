@@ -5,8 +5,7 @@
 # How to use this repo
 
 ```
-git clone https://github.com/jedrzejkubica/Haploblock_Clusters_ElixirBH25.git
-cd Haploblock_Clusters_ElixirBH25
+git clone this repo
 ```
 
 # Data
