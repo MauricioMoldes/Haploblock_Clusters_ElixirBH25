@@ -1,4 +1,5 @@
 .vscode
+*__pycache__*
 
 # but not Halldorsson2019 recombination map (wget 403 error)
 data/*
