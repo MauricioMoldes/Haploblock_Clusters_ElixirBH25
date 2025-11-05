@@ -95,7 +95,7 @@ Cluster haploblock phased sequences using MMSeqs2:
 python clusters.py --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv --merged_consensus_dir data/test/GBR/TNFa/haploblock_phased_seq_merged --variant_counts data/test/GBR/TNFa/variant_counts.tsv --chr 6 --out data/test/GBR/TNFa
 ```
 
-This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a directory clusters/ a with a TSV file, which contains clusters for each haploblock.
+This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a TSV file in directory clusters/.
 
 
 # Results
