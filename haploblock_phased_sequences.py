@@ -97,20 +97,19 @@ def generate_consensus_fasta(fasta, vcf, out):
     return(output_hap0, output_hap1)
 
 
-def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
+def generate_individual_hashes(variants, vcf, chr, haploblock_boundaries, samples):
     """
-    Generate a "variant hash" for every variant of interest,
-    ie an integer number with len(variants) digits, each corresponding to variant of interes:
+    Generate a "individual hash" for every variant of interest,
+    ie an integer number with len(variants) digits, each corresponding to variant of interest:
     1 if variant in vcf, 0 otherwise
-
-    the way we do it here is probably not the most efficient
 
     arguments:
     - vcf: pathlib.Path to bgzipped vcf
     - variants: list of variants of interest
 
     returns:
-    - individual2variantHash: dict, key=sampleRegionHap, value=int(variant hash)
+    - individual2hash: dict, key=str({sample}_chr{chr}_region_{start}-{end}_hap0),
+      value=individual hash
     """        
     # find haploblock with variants of interest
     first_variant_pos = variants[0]  # we assume that the user provided variants within the same haploblock
@@ -124,17 +123,15 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
         else:
             logger.error("Cannot find variant %s", first_variant_pos)
             raise Exception("Variants not in any haploblock")
-    
-    print(start, end)
-    
+
     # initialize all variant hashes to lists of "0"s
-    individual2variantHash = {}
+    individual2hash = {}
     for sample in samples:
         individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
         individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
-        individual2variantHash[individual_1] = ["0"] * len(variants)
-        individual2variantHash[individual_2] = ["0"] * len(variants)
+        individual2hash[individual_1] = ["0"] * len(variants)
+        individual2hash[individual_2] = ["0"] * len(variants)
 
     # search for variants in VCF
     query = chr + ":" + ",".join(variants)
@@ -163,29 +160,30 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
             individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
             if hap0 == "1":
-                individual2variantHash[individual_1][variant_count] = "1"
+                individual2hash[individual_1][variant_count] = "1"
             if hap1 == "1":
-                individual2variantHash[individual_2][variant_count] = "1"
+                individual2hash[individual_2][variant_count] = "1"
 
     # converst hash lists to strings 
-    for individual in individual2variantHash:
-        hashList = individual2variantHash[individual]
+    for individual in individual2hash:
+        hashList = individual2hash[individual]
         hashStr = "".join(hashList)
-        individual2variantHash[individual] = hashStr
+        individual2hash[individual] = hashStr
     
-    return(individual2variantHash)
+    return(individual2hash)
 
 
-def variant_hashes_to_TSV(individual2variantHash, out):
+def individual_hashes_to_TSV(individual2hash, out):
     """
     arguments:
-    - : dict, key=sampleRegionHap, value=variant hash
+    - individual2hash: dict, key=str({sample}_chr{chr}_region_{start}-{end}_hap0),
+      value=individual hash
     """
-    with open(os.path.join(out, "variant_hashes.tsv"), 'w') as f:
+    with open(os.path.join(out, "individual_hashes.tsv"), 'w') as f:
         # header
-        f.write("INDIVIDUAL\tVAR_HASH\n")
-        for individual in individual2variantHash:
-            f.write(individual + "\t" + individual2variantHash[individual] + "\n")
+        f.write("INDIVIDUAL\tHASH\n")
+        for individual in individual2hash:
+            f.write(individual + "\t" + individual2hash[individual] + "\n")
 
 
 def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, out):
@@ -235,9 +233,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
     # we assume that the user provided variants within the same haploblock,
     # need to check it later
     variants = data_parser.parse_variants_of_interest(variants_file)
-    print(variants)
-    individual2variantHash = generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples)
-    variant_hashes_to_TSV(individual2variantHash, out)
+    individual2variantHash = generate_individual_hashes(variants, vcf, chr, haploblock_boundaries, samples)
+    individual_hashes_to_TSV(individual2variantHash, out)
 
     for (start, end) in haploblock_boundaries:
         logger.info(f"Generating phased VCF for haploblock {start}-{end}")
