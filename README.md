@@ -52,6 +52,54 @@ bgzip chr6.fa
 TBD
 
 
+# Run pipeline
+
+#### 1. Generate haploblock boundaries for chr6 using the Halldorsson2019 recombination map:
+```
+python haploblock_boundaries.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr chr6 > data/haploblock_boundaries_chr6.tsv
+```
+
+This creates a TSV file (with header) with 2 columns: START END
+
+See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for 1398 haploblock boundaries (high recombination rates defined as **rate > 10*average**).
+
+#### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files):
+```
+python haploblock_phased_sequences.py \
+    --boundaries_file data/haploblock_boundaries_chr6.tsv \
+    --samples_file data/igsr-chb.tsv.tsv \
+    --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+    --ref data/chr6.fa.gz \
+    --chr_map data/chr_map \
+    --chr 6 \
+    --variants data/variants_of_interest.txt \
+    --out data/CHB/
+```
+
+This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr:position".
+
+NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
+
+Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
+```
+./merge_fasta_per_region.sh out/tmp out/haploblock_phased_seq_merged
+```
+
+We also calculate the mean and average of the number of variants per haploblock, they are saved in variant_counts.tsv (with 4 columns: START, END, MEAN, STDEV). We assign variant hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interes: 1 if variant in the sample or 0 otherwise.
+
+
+#### 3. Generate haploblock clusters
+
+Cluster haploblock phased sequences using MMSeqs2:
+```
+python clusters.py --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv --merged_consensus_dir data/test/GBR/TNFa/haploblock_phased_seq_merged --variant_counts data/test/GBR/TNFa/variant_counts.tsv --chr 6 --out data/test/GBR/TNFa
+```
+
+This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a directory clusters/ a with a TSV file, which contains clusters for each haploblock.
+
+
+# Results
+
 ## Exploring recombination maps
 
 All code for exploring recombination maps is in [haploblock_breakpoints.ipynb](notebooks/haploblock_breakpoints.ipynb)
@@ -157,53 +205,7 @@ The number of peaks found with different sigma:
 | 10 | 1210 |
 
 
-## Run automated pipeline
-
-#### 1. Generate haploblock boundaries for chr6 using the Halldorsson2019 recombination map:
-```
-python haploblock_boundaries.py --recombination_file data/Halldorsson2019/aau1043_datas3 --chr chr6 > data/haploblock_boundaries_chr6.tsv
-```
-
-This creates a TSV file (with header) with 2 columns: START END
-
-See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for 1398 haploblock boundaries (high recombination rates defined as **rate > 10*average**).
-
-#### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files):
-```
-python haploblock_phased_sequences.py \
-    --boundaries_file data/haploblock_boundaries_chr6.tsv \
-    --samples_file data/igsr-chb.tsv.tsv \
-    --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-    --ref data/chr6.fa.gz \
-    --chr_map data/chr_map \
-    --chr 6 \
-    --variants data/variants_of_interest.txt \
-    --out data/CHB/
-```
-
-This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr:position".
-
-NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
-
-Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
-```
-./merge_fasta_per_region.sh out/tmp out/haploblock_phased_seq_merged
-```
-
-We also calculate the mean and average of the number of variants per haploblock, they are saved in variant_counts.tsv (with 4 columns: START, END, MEAN, STDEV). We assign variant hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interes: 1 if variant in the sample or 0 otherwise.
-
-
-#### 3. Generate haploblock clusters
-
-Cluster haploblock phased sequences using MMSeqs2:
-```
-python clusters.py --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv --merged_consensus_dir data/test/GBR/TNFa/haploblock_phased_seq_merged --variant_counts data/test/GBR/TNFa/variant_counts.tsv --chr 6 --out data/test/GBR/TNFa
-```
-
-This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a directory clusters/ a with a TSV file, which contains clusters for each haploblock.
-
-
-# Results
+## Testing the pipeline
 
 We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
 - 10 random haploblocks of chr6
