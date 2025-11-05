@@ -119,6 +119,39 @@ def parse_samples_from_vcf(vcf):
     return(samples)
 
 
+def parse_variants_of_interest(variants_file):
+    """
+    Parses variants of interest file with one variant per line in format chr:pos
+
+    arguments:
+    - variants_file
+    
+    returns:
+    - variants: list of string variant positions
+    """
+    variants = []
+
+    try:
+        f = open(variants_file, 'r')
+    except Exception as e:
+        logger.error("Opening provided variants file %s: %s", variants_file, e)
+        raise Exception("Cannot open provided variants file")
+    
+    for line in f:
+        line_split = line.rstrip().split(":")
+
+        if len(line_split) != 2:
+            logger.error("Variants file %s has bad line: %s",
+                         variants_file, line)
+            raise Exception("Bad line in the variants file")
+        
+        chr, position = line_split
+
+        variants.append(position)
+
+    return(variants)
+
+
 def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
     """
     Extract a specific region from a VCF file

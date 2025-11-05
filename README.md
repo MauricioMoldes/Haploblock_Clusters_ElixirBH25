@@ -177,10 +177,11 @@ python haploblock_phased_sequences.py \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
     --chr 6 \
+    --variants data/variants_of_interest.txt \
     --out data/CHB/
 ```
 
-This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). The regions of interest can be specified in the boundaries file and samples in the samples file.
+This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr:position".
 
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 

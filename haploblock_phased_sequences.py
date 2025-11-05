@@ -113,17 +113,19 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
     - individual2variantHash: dict, key=sampleRegionHap, value=int(variant hash)
     """        
     # find haploblock with variants of interest
-    first_variant = variants[0]  # we assume that the user provided variants within the same haploblock
+    first_variant_pos = variants[0]  # we assume that the user provided variants within the same haploblock
     start = 0
     end = 0
     for (bound_start, bound_end) in haploblock_boundaries:
-        if int(bound_start) <= int(first_variant) <= int(bound_end):
+        if int(bound_start) <= int(first_variant_pos) <= int(bound_end):
             start = bound_start
             end = bound_end
             break
         else:
-            logger.error("Cannot find variant %s", first_variant)
+            logger.error("Cannot find variant %s", first_variant_pos)
             raise Exception("Variants not in any haploblock")
+    
+    print(start, end)
     
     # initialize all variant hashes to string of "0"s
     individual2variantHash = {}
@@ -131,8 +133,8 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
         individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
         individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
-        individual2variantHash[individual_1] = "0" * len(variants)
-        individual2variantHash[individual_2] = "0" * len(variants)
+        individual2variantHash[individual_1] = ["0"] * len(variants)
+        individual2variantHash[individual_2] = ["0"] * len(variants)
 
     # search for genotypes in VCF
     query = chr + ":" + ",".join(variants)
@@ -164,6 +166,11 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
                 individual2variantHash[individual_1][variant_count] = "1"
             if hap1 == "1":
                 individual2variantHash[individual_2][variant_count] = "1"
+
+    for individual in individual2variantHash:
+        hashList = individual2variantHash[individual]
+        hashStr = "".join(hashList)
+        individual2variantHash[individual] = hashStr
     
     return(individual2variantHash)
 
@@ -180,7 +187,7 @@ def variant_hashes_to_TSV(individual2variantHash, out):
             f.write(individual + "\t" + individual2variantHash[individual] + "\n")
 
 
-def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
+def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, out):
     # sanity check
     if not os.path.exists(boundaries_file):
         logger.error(f"File {boundaries_file} does not exist.")
@@ -196,6 +203,9 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
         raise Exception("File does not exist")
     if not os.path.exists(chr_map):
         logger.error(f"File {chr_map} does not exist.")
+        raise Exception("File does not exist")
+    if not os.path.exists(variants_file):
+        logger.error(f"File {variants_file} does not exist.")
         raise Exception("File does not exist")
     
     # create out/ and a tmp/ directory in out/ for temporary files
@@ -223,7 +233,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
 
     # we assume that the user provided variants within the same haploblock,
     # need to check it later
-    variants = ["31480875"]
+    variants = data_parser.parse_variants_of_interest(variants_file)
+    print(variants)
     individual2variantHash = generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples)
     variant_hashes_to_TSV(individual2variantHash, out)
 
@@ -296,6 +307,10 @@ if __name__ == "__main__":
                         help='chromosome',
                         type=str,
                         required=True)
+    parser.add_argument('--variants',
+                        help='Path to file with variants of interest, one per line, in format chr:pos',
+                        type=pathlib.Path,
+                        required=True)
     parser.add_argument('--out',
                         help='Path to output folder',
                         type=pathlib.Path,
@@ -310,6 +325,7 @@ if __name__ == "__main__":
              ref=args.ref,
              chr_map=args.chr_map,
              chr=args.chr,
+             variants_file=args.variants,
              out=args.out)
 
     except Exception as e:
