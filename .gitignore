@@ -2,6 +2,7 @@
 *__pycache__*
 
 # but not Halldorsson2019 recombination map (wget 403 error)
+backup/*
 data/*
 data/Halldorsson2019/*
 
