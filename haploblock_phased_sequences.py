@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 def count_variants(vcf):
     """
     Count the number of variants in the vcf file
+
+    arguments:
+    - vcf: pathlib.Path to bgzipped vcf
+
+    returns:
+    - count_0: int, number of variants on haplotype 0
+    - count_1: int, number of variants on haplotype 1
     """
     # extract genotype (GT) strings
     GTs = subprocess.run(["bcftools", "query",
@@ -62,6 +69,10 @@ def generate_consensus_fasta(fasta, vcf, out):
     - ref_chr6.fa.gz.fai
     - ref_chr6.fa.gz.gzi
     - chr{chr}_region_{start}-{end}.fa.gz
+
+    returns:
+    - output_hap0: pathlib.Path to consensus fasta with hap0
+    - output_hap1: pathlib.Path to consensus fasta with hap1
     """
     output_hap0 = os.path.join(out, "tmp", pathlib.Path(vcf.stem).stem + "_hap0.fa")  # removes .vcf.gz
     output_hap1 = os.path.join(out, "tmp", pathlib.Path(vcf.stem).stem + "_hap1.fa")  # removes .vcf.gz
@@ -72,7 +83,7 @@ def generate_consensus_fasta(fasta, vcf, out):
                     "-H", "1",
                     "-f", fasta,
                     vcf],
-                    stdout=open(output_hap1, "w"),
+                    stdout=open(output_hap0, "w"),
                     check=True)
     
     # haploid sequence 2
@@ -80,10 +91,10 @@ def generate_consensus_fasta(fasta, vcf, out):
                     "-H", "2",
                     "-f", fasta,
                     vcf],
-                    stdout=open(output_hap2, "w"),
+                    stdout=open(output_hap1, "w"),
                     check=True)
 
-    return(output_hap1, output_hap2)
+    return(output_hap0, output_hap1)
 
 
 def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
@@ -117,8 +128,8 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
     # initialize all variant hashes to string of "0"s
     individual2variantHash = {}
     for sample in samples:
-        individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
-        individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap2"
+        individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
+        individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
         individual2variantHash[individual_1] = "0" * len(variants)
         individual2variantHash[individual_2] = "0" * len(variants)
@@ -144,16 +155,14 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
             if '|' not in genotype:
                 logger.warning("variant %s:%s is unphased or missing, skipping it",  chrom, pos)
                 continue
-            hap1, hap2 = genotype.split('|')
+            hap0, hap1 = genotype.split('|')
 
-            individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
-            individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap2"
+            individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
+            individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
-            if hap1 == "1":
-                print("hap1 = 1")
+            if hap0 == "1":
                 individual2variantHash[individual_1][variant_count] = "1"
-            if hap2 == "1":
-                print("hap2 = 2")
+            if hap1 == "1":
                 individual2variantHash[individual_2][variant_count] = "1"
     
     return(individual2variantHash)
@@ -239,7 +248,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
             haploblock_counts.append(count_0)
             haploblock_counts.append(count_1)
 
-            (sample_hap1, sample_hap2) = generate_consensus_fasta(region_fasta, sample_vcf, out)
+            (sample_hap0, sample_hap1) = generate_consensus_fasta(region_fasta, sample_vcf, out)
 
         # calculate mean and stdev of the number variants
         mean = sum(haploblock_counts) / len(haploblock_counts)
