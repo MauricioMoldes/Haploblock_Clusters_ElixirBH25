@@ -215,7 +215,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
         logger.info(f"Generating phased fasta for haploblock {start}-{end}")
         region_fasta = data_parser.extract_region_from_fasta(ref, chr, start, end, out)
 
-        # list for the number variants (separate for each haplotype)
+        # list of the number of variants per sample and per haplotype
         haploblock_counts = []
 
         logger.info(f"Generating consensus fasta files for haploblock {start}-{end}")
@@ -223,7 +223,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
             # logger.info(f"Generating phased VCF for haploblock {start}-{end} for sample %s", sample)
             sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out)
 
-            # calculate of the number variants
+            # calculate the number variants in the sample
             (count_0, count_1) = count_variants(sample_vcf)
             haploblock_counts.append(count_0)
             haploblock_counts.append(count_1)
@@ -236,7 +236,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, out):
 
         haploblock2count[(start, end)] = [mean, stdev]
     
-    data_parser.save_haploblock_variant_counts(haploblock2count, variant_counts_file)
+    data_parser.variant_counts_to_TSV(haploblock2count, out)
 
 
 if __name__ == "__main__":
@@ -281,10 +281,6 @@ if __name__ == "__main__":
                         help='Path to output folder',
                         type=pathlib.Path,
                         required=True)
-    parser.add_argument('--variant_counts_file',
-                        help='Path to a file to variant counts (mean, stdev)',
-                        type=pathlib.Path,
-                        required=True)
 
     args = parser.parse_args()
 
@@ -295,8 +291,7 @@ if __name__ == "__main__":
              ref=args.ref,
              chr_map=args.chr_map,
              chr=args.chr,
-             out=args.out,
-             variant_counts_file=args.variant_counts_file)
+             out=args.out)
 
     except Exception as e:
         # details on the issue should be in the exception name, print it to stderr and die

@@ -225,12 +225,12 @@ def extract_region_from_fasta(fasta, chr, start, end, out):
     return(output_fasta)
 
 
-def save_haploblock_variant_counts(haploblock2count, out_file):
+def variant_counts_to_TSV(haploblock2count, out):
     """
     arguments:
     - haploblock2count: dict, key=(start, end), value=[mean, stdev]
     """
-    with open(out_file, 'w') as f:
+    with open(os.path.join(out, "variant_counts.tsv"), 'w') as f:
         # header
         f.write("START\tEND\tMEAN\tSTDEV\n")
         for (start, end) in haploblock2count:
