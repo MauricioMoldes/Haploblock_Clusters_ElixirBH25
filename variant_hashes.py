@@ -4,16 +4,21 @@ import logging
 import argparse
 import pathlib
 
+import numpy
+
 import data_parser
 
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
 
+CLUSTER_HASH_LENGTH = 20
+
+
 def generate_cluster_hashes(clusters):
     """
-    Generate unique cluster hashes for each cluster,
-    ie strings of len(clusters) with 1/0s
+    Generate a unique identifier, "cluster hash", for every cluster,
+    ie a string with CLUSTER_HASH_LENGTH digits (0/1s)
     
     arguments:
     - clusters: list of cluster IDs
@@ -23,13 +28,11 @@ def generate_cluster_hashes(clusters):
     """
     cluster2hash = {}
 
-    idx = len(clusters) - 1  # populating cluster hashes from the end
+    idx = 0  # populating cluster hashes from the end
     for cluster in clusters:
-        hashList = ["0"] * len(clusters)
-        hashList[idx] = "1"
-        hash = "".join(hashList)
+        hash = numpy.binary_repr(idx, width=CLUSTER_HASH_LENGTH)
         cluster2hash[cluster] = hash
-        idx -= 1
+        idx += 1
 
     return(cluster2hash)
 
@@ -101,7 +104,7 @@ def hashes_to_TSV(individual2hash, out):
             f.write(individual + "\t" + individual2hash[individual] + "\n")
 
 
-def main(clusters_file, variant_hashes, haploblock_hashes, out):
+def main(clusters_file, variant_hashes, haploblock_hashes, chr, out):
 
     logger.info("Parsing clusters")
     # this should be fixed, beacuse we will have one clusters file per haploblock, not one clusters file in total
@@ -115,8 +118,7 @@ def main(clusters_file, variant_hashes, haploblock_hashes, out):
     haploblock2hash = data_parser.parse_haploblock_hashes(haploblock_hashes)
 
     logger.info("Generating individual hashes")
-    # for now hardcode chromosome hash
-    chr_hash = "0000100000"  # chr6  
+    chr_hash = numpy.binary_repr(int(chr))
     cluster2hash = generate_cluster_hashes(clusters)
     individual2hash = generate_individual_hashes(individual2cluster, cluster2hash, variant2hash, haploblock2hash, chr_hash)
 
@@ -150,6 +152,10 @@ if __name__ == "__main__":
                         help='Path to file with haploblock hashes',
                         type=pathlib.Path,
                         required=True)
+    parser.add_argument('--chr',
+                        help='chromosome',
+                        type=str,
+                        required=True)
     parser.add_argument('--out',
                         help='Path to output folder',
                         type=pathlib.Path,
@@ -161,6 +167,7 @@ if __name__ == "__main__":
         main(clusters_file=args.clusters,
              variant_hashes=args.variant_hashes,
              haploblock_hashes=args.haploblock_hashes,
+             chr=args.chr,
              out=args.out)
 
     except Exception as e:

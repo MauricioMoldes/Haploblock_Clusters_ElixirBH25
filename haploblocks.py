@@ -12,23 +12,24 @@ import data_parser
 logger = logging.getLogger(__name__)
 
 
+HAPLOBLOCK_HASH_LENGTH = 20
+
+
 def generate_haploblock_hashes(haploblock_boundaries):
     """
     Generate a unique identifier, "haploblock hash", for every haploblock,
-    ie an integer with len(haploblock_boundaries) digits
+    ie a string with HAPLOBLOCK_HASH_LENGTH digits (0/1s)
 
     returns:
     - haploblock2hash: dict, key=(start, end), value=haploblock hash
     """
     haploblock2hash = {}
     
-    idx = len(haploblock_boundaries) - 1  # populating cluster hashes from the end
+    idx = 0
     for (start, end) in haploblock_boundaries:
-        hashList = ["0"] * len(haploblock_boundaries)
-        hashList[idx] = "1"
-        hash = "".join(hashList)
+        hash = numpy.binary_repr(idx, width=HAPLOBLOCK_HASH_LENGTH)
         haploblock2hash[(start, end)] = hash
-        idx -= 1
+        idx += 1
     
     return(haploblock2hash)
 
