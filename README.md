@@ -54,11 +54,6 @@ and index file (same point about chromosomes):
 wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz.tbi
 ```
 
-and a TSV file with the list of samples in populations (this is for testing, if you want to run this for all populations, you do not need these, but make sure line 243 in haploblock_phased_sequences.py is commented out):
-- CHB (113 samples): https://www.internationalgenome.org/data-portal/population/CHB
-- PUR (150 samples): https://www.internationalgenome.org/data-portal/population/PUR
-- GBR (107 samples): https://www.internationalgenome.org/data-portal/population/GBR
-
 3. Reference sequence for chromosome 6 (GRCh38), must be bgzipped:
 ```
 wget https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr6.fa.gz
@@ -66,6 +61,8 @@ gzip -d chr6.fa.gz
 ### If you do not have bgzip, install it (see install_dependencies.txt)
 bgzip chr6.fa
 ```
+
+Optionally, this is for testing, if you want to run this for one population from 1000Genomes, you will also need a TSV file with samples in data/, eg. CHB (113 samples): https://www.internationalgenome.org/data-portal/population/CHB
 
 
 # Workflow
@@ -101,7 +98,6 @@ See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for 13
 ```
 python haploblock_phased_sequences.py \
     --boundaries_file data/haploblock_boundaries_chr6.tsv \
-    --samples_file data/igsr-chb.tsv.tsv \
     --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
@@ -114,6 +110,11 @@ python haploblock_phased_sequences.py \
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 
 This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position". We also calculate the mean and average of the number of variants per haploblock, they are saved in **variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV). We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **variant_hashes.tsv** (with two columns: INDIVIDUAL HASH)
+
+Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes and provide it as input to the script:
+```
+python haploblock_phased_sequences.py [...] --samples_file data/igsr-chb.tsv.tsv
+```
 
 Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
 ```

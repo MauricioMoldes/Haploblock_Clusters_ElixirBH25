@@ -221,9 +221,6 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
     if not os.path.exists(boundaries_file):
         logger.error(f"File {boundaries_file} does not exist.")
         raise Exception("File does not exist")
-    if not os.path.exists(samples_file):
-        logger.error(f"File {samples_file} does not exist.")
-        raise Exception("File does not exist")
     if not os.path.exists(vcf):
         logger.error(f"File {vcf} does not exist.")
         raise Exception("File does not exist")
@@ -253,9 +250,12 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     logger.info("Found %i haploblocks", len(haploblock_boundaries))
 
-    logger.info("Parsing samples")
-    samples = data_parser.parse_samples(samples_file)
-    # samples = data_parser.parse_samples_from_vcf(vcf)
+    if samples_file:
+        logger.info("Parsing samples from file")
+        samples = data_parser.parse_samples(samples_file)
+    else:
+        logger.info("Parsing samples from the VCF file")
+        samples = data_parser.parse_samples_from_vcf(vcf)
     logger.info("Found %i samples", len(samples))
 
     # dict for variant counts, key=(start, end), value=list(mean, stdev)
@@ -316,10 +316,6 @@ if __name__ == "__main__":
                         help='Path to boundaries file generated from Halldorsson et al., 2019',
                         type=pathlib.Path,
                         required=True)
-    parser.add_argument('--samples_file',
-                        help='Path to samples file from 1000Genomes',
-                        type=pathlib.Path,
-                        required=True)
     parser.add_argument('--vcf',
                         help='Path to phased VCF file (bgzipped) from 1000Genomes',
                         type=pathlib.Path,
@@ -344,6 +340,10 @@ if __name__ == "__main__":
                         help='Path to output folder',
                         type=pathlib.Path,
                         required=True)
+    parser.add_argument('--samples_file',
+                        help='Path to samples file from 1000Genomes',
+                        type=pathlib.Path,
+                        required=False)
 
     args = parser.parse_args()
 
