@@ -7,7 +7,17 @@
 ```
 git clone this repo
 ```
+## Python environment
 
+Installed via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
+
+```
+python3 -m venv --system-site-packages ~/pyEnv_ElixirBH2025
+source ~/pyEnv_ElixirBH2025/bin/activate
+pip install --upgrade pip
+pip install numpy
+
+```
 # Data
 
 We assume all data listed below is downloaded into `data/`:
@@ -259,19 +269,6 @@ See [install_dependencies.txt](install_dependencies.txt) for details.
 # System requirements
 
 During the hackathon we ran the pipeline on a Linux-based machine with 8 CPU cores and 16 GB of memory.
-
-
-## Python environment
-
-Installed via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
-
-```
-python3 -m venv --system-site-packages ~/pyEnv_ElixirBH2025
-source ~/pyEnv_ElixirBH2025/bin/activate
-pip install --upgrade pip
-pip install numpy
-
-```
 
 
 # Acknowlegdements
