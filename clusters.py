@@ -86,13 +86,17 @@ def main(boundaries_file, merged_consensus_dir, variant_counts_file, chr, out, c
         raise Exception("Output directory exists")
     os.mkdir(os.path.join(out, "clusters"))
 
-
     logger.info("Parsing haploblock boundaries")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     logger.info("Found %i haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing variant counts file")
     (haploblock2min_id, haploblock2cov_fraction) = calculate_mmseq_params(variant_counts_file)
+
+    # sanity check
+    if len(haploblock_boundaries) != len(haploblock2min_id):
+        logger.error("The number of haploblocks is incorrect, are you providing the right boundaries file?")
+        raise Exception("Haploblock count error")
 
     logger.info("Calculating clusters")
     for (start, end) in haploblock_boundaries:
