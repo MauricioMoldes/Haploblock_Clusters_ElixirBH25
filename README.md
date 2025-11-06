@@ -8,7 +8,7 @@
 git clone this repo
 cd Haploblock_Clusters_ElixirBH25/
 ```
-## Configure Python environment
+### Configure Python environment
 
 Installed via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
 
@@ -19,6 +19,13 @@ pip install --upgrade pip
 pip install numpy
 
 ```
+### Install other dependencies
+
+Please go to [install_dependencies.txt](install_dependencies.txt) and follow the instructions *carefully*
+
+Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin`.
+
+
 # Data
 
 All data listed below must be downloaded into `data/`:
@@ -262,14 +269,6 @@ We generated haploblock phased sequences (format: sample_chr_region_start-end_ha
 + haploblock phased sequences for TNFa for all populations
 
 We generated haploblock clusters.
-
-
-# Dependencies
-
-Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin`.
-
-See [install_dependencies.txt](install_dependencies.txt) for details.
-
 
 # System requirements
 
