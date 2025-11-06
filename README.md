@@ -76,6 +76,11 @@ TBD
 
 # Run pipeline
 
+```
+cd ..
+
+```
+
 #### 1. Generate haploblock boundaries and hashes for chr6 using the Halldorsson2019 recombination map:
 ```
 python haploblocks.py \
