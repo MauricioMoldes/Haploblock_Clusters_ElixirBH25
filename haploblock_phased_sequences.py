@@ -187,6 +187,7 @@ def individual_hashes_to_TSV(individual2hash, out):
 
 
 def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, out):
+
     # sanity check
     if not os.path.exists(boundaries_file):
         logger.error(f"File {boundaries_file} does not exist.")
