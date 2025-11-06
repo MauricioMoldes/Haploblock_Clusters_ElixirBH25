@@ -75,8 +75,8 @@ TBD
 ```
 # If you are in data/
 cd ..
-
 ```
+
 
 #### 1. Generate haploblock boundaries and hashes for chr6 using the Halldorsson2019 recombination map:
 ```
@@ -86,13 +86,8 @@ python haploblocks.py \
     --out data/
 ```
 
-This creates haploblock boundaries, a TSV file (with header) with 2 columns: START END
+This creates haploblock boundaries, a TSV file (with header) with 2 columns (START END), as well as haploblock hashes, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, ie integers with len(haploblock_boundaries) digits 1/0s.
 
-as well as haploblock hashes, a TSV file (with header) with 3 columns: START END HASH
-
-Haploblock hash is a unique identifier for a haploblock, ie an integer with len(haploblock_boundaries) digits, 1 and 0.
-
-See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for 1398 haploblock boundaries (high recombination rates defined as **rate > 10*average**).
 
 #### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files) and individual hashes:
 ```
@@ -157,16 +152,30 @@ python variant_hashes.py \
     --out data/
 ```
 
-The output is individual_hashes.tsv with two columns: INDIVIDUAL HASH
+The output is a TSV file (with two columns: INDIVIDUAL HASH): individual_hashes.tsv in data/.
 
 
 ## Model
 
 TBD
 
+
 # Results
 
-## Exploring recombination maps
+## Testing the pipeline
+
+We found 1399 haploblocks in chromosome 6. See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for these haploblock boundaries (high recombination rates defined as **rate > 10*average**).
+
+We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
+- 10 random haploblocks of chr6
+- 5 random haploblocks of chr 6
+- haploblock overlapping with TNFa
+- haploblock overlapping with height genes (TODO ref)
+
++ haploblock phased sequences and haploblock hashes for TNFa for all populations
+
+
+## Exploring recombination maps (pre-hackathon)
 
 All code for exploring recombination maps is in [haploblock_breakpoints.ipynb](notebooks/haploblock_breakpoints.ipynb)
 
@@ -269,19 +278,6 @@ The number of peaks found with different sigma:
 | 3 | 3579 |
 | 5 | 2287 |
 | 10 | 1210 |
-
-
-## Testing the pipeline
-
-We found 1399 haploblocks in chromosome 6.
-
-We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for all samples from the CBH, PUR and GBR populations for the following regions:
-- 10 random haploblocks of chr6
-- 5 random haploblocks of chr 6
-- haploblock overlapping with TNFa
-- haploblock overlapping with height genes (TODO ref)
-
-+ haploblock phased sequences and haploblock hashes for TNFa for all populations
 
 
 # System requirements
