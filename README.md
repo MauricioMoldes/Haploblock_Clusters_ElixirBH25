@@ -271,8 +271,6 @@ source ~/pyEnv_ElixirBH2025/bin/activate
 pip install --upgrade pip
 pip install numpy
 
-# for notebooks/haploblock_breakpoints.ipynb
-pip install pandas scipy matplotlib
 ```
 
 
