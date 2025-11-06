@@ -241,8 +241,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
     logger.info("Found %i haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
-    samples = data_parser.parse_samples(samples_file)
-    # samples = data_parser.parse_samples_from_vcf(vcf)
+    ## samples = data_parser.parse_samples(samples_file)
+    samples = data_parser.parse_samples_from_vcf(vcf)
     logger.info("Found %i samples", len(samples))
 
     # dict for variant counts, key=(start, end), value=list(mean, stdev)
