@@ -4,79 +4,10 @@ import logging
 import argparse
 import pathlib
 
+import data_parser
 
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
-
-
-def parse_recombination_rates(recombination_file, chromosome):
-    """
-    Parses recombination rates from Halldorsson et al., 2019
-
-    arguments:
-    - recombination_file with 7-line header
-      and 5 columns: Chr Begin End cMperMb cM
-
-    returns:
-    - haploblock_boundaries: list of tuples with haploblock boundaries (start, end)
-    """
-    if not chromosome.startswith("chr"):
-        chromosome = "chr" + str(chromosome)
-    
-    haploblock_boundaries = []  # start at pos==1
-    positions = []
-    rates = []
-    high_rates = []
-    high_rates_positions = []
-
-    try:
-        f = open(recombination_file, 'r')
-    except Exception as e:
-        logger.error("Opening provided recombination file %s: %s", recombination_file, e)
-        raise Exception("Cannot open provided recombination file")
-
-    for line in f:
-        # skip header
-        if line.startswith("#"):
-            continue
-
-        split_line = line.rstrip().split('\t')
-
-        if len(split_line) != 5:
-            logger.error("Recombination file %s has bad line (not 5 tab-separated fields): %s",
-                         recombination_file, line)
-            raise Exception("Bad line in the recombination file")
-
-        (chr, start, end, rate, cM) = split_line
-
-        if chr == chromosome:
-            positions.append(int(start))
-            rates.append(float(rate))
-    
-    assert len(positions) == len(rates)
-
-    # find positions with recombination rate > 10*avg
-    avg_rate = sum(rates) / len(rates)
-
-    for i in range(len(rates)):
-        if rates[i] > 10 * avg_rate:
-            high_rates.append(rates[i])
-            high_rates_positions.append(positions[i])
-    
-    # add first haploblock
-    haploblock_boundaries.append((1, high_rates_positions[0]))
-    
-    for i in range(1, len(high_rates)):
-        start = high_rates_positions[i - 1]
-        end = high_rates_positions[i]
-        haploblock_boundaries.append((start, end))
-    
-    # add last haploblock
-    haploblock_boundaries.append((high_rates_positions[-1], positions[-1]))
-
-    logger.info("Found %i haploblocks", len(haploblock_boundaries))
-    
-    return(haploblock_boundaries)
 
 
 def generate_haploblock_hashes(haploblock_boundaries):
@@ -131,7 +62,7 @@ def haploblock_hashes_to_TSV(haploblock2hash, chr, out):
 def main(recombination_file, chr, out):
 
     logger.info("Parsing recombination file")
-    haploblock_boundaries = parse_recombination_rates(recombination_file, chr)
+    haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chr)
 
     logger.info("Generating haploblock hashes")
     haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)

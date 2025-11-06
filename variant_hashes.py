@@ -4,65 +4,19 @@ import logging
 import argparse
 import pathlib
 
+import data_parser
 
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
-def parse_clusters(clusters_file):
-    """
-    Parses clusters file from MMSeqs2 (no header) with 2 columns: representative, member
-    assing unique ids for each cluster.
-    We want to create unique cluster IDs based on cluster representatives,
-    and match members to cluster IDs.
 
-    arguments:
-    - clusters_file
-
-    returns:
-    - member2cluster: dict, key=member, value=unique clusterID
-    - num_clusters: int
-    """
-    try:
-        f = open(clusters_file, 'r')
-    except Exception as e:
-        logger.error("Opening provided clusters file %s: %s", clusters_file, e)
-        raise Exception("Cannot open provided clusters file")
-    
-    representative2cluster = {}
-    member2representative = {}
-    member2cluster = {}
-    num_clusters = 0
-    for line in f:
-        split_line = line.rstrip().split('\t')
-
-        if len(split_line) != 2:
-            logger.error("Clusters file %s has bad line (not 2 tab-separated fields): %s",
-                         clusters_file, line)
-            raise Exception("Bad line in the clusters file")
-        
-        (representative, member) = split_line
-        
-        if not representative in representative2cluster:
-            representative2cluster[representative] = num_clusters
-            num_clusters += 1
-
-        member2representative[member] = representative
-    
-    for member in member2representative:
-        representative = member2representative[member]
-        cluster = representative2cluster[representative]
-        member2cluster[member] = cluster
-
-    return(member2cluster, num_clusters)
-
-
-def parse_individual_hashes():
+def parse_individual_hashes(individual_hashes):
     pass
 
-def parse_haploblock_hashes():
+def parse_haploblock_hashes(haploblock_hashes):
     pass
 
-def generate_variant_hases():
+def generate_variant_hases(individual2cluster):
     # generate cluster hashes
     pass
 
@@ -71,8 +25,11 @@ def generate_variant_hases():
 def main(clusters_file, individual_hashes, haploblock_hashes):
 
     logger.info("Parsing clusters")
-    (member2cluster, num_clusters) = parse_clusters(clusters_file)
-    logger.info("Found %i clusters with %i members in total", num_clusters, len(member2cluster))
+    # this should be fixed, beacuse we will have one clusters file per haploblock
+    (individual2cluster, num_clusters) = data_parser.parse_clusters(clusters_file)
+    logger.info("Found %i clusters with %i individuals in total", num_clusters, len(individual2cluster))
+
+
 
 
 if __name__ == "__main__":

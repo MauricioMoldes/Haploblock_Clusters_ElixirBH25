@@ -186,6 +186,22 @@ def individual_hashes_to_TSV(individual2hash, out):
             f.write(individual + "\t" + individual2hash[individual] + "\n")
 
 
+def variant_counts_to_TSV(haploblock2count, out):
+    """
+    arguments:
+    - haploblock2count: dict, key=(start, end), value=[mean, stdev]
+    """
+    with open(os.path.join(out, "variant_counts.tsv"), 'w') as f:
+        # header
+        f.write("START\tEND\tMEAN\tSTDEV\n")
+        for (start, end) in haploblock2count:
+            # mean and stdev in scientific notation with 3 significant digits
+            mean = "{:.3g}".format(haploblock2count[(start, end)][0])
+            stdev = "{:.3g}".format(haploblock2count[(start, end)][1])
+            
+            f.write(str(start) + "\t" + str(end) + "\t" + str(mean) + "\t" + str(stdev) + "\n")
+
+
 def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, out):
 
     # sanity check
@@ -266,7 +282,7 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
 
         haploblock2count[(start, end)] = [mean, stdev]
     
-    data_parser.variant_counts_to_TSV(haploblock2count, out)
+    variant_counts_to_TSV(haploblock2count, out)
 
 
 if __name__ == "__main__":

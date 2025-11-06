@@ -2,11 +2,80 @@ import os
 import logging
 import pathlib
 
+import subprocess
 
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
-import subprocess
+
+def parse_recombination_rates(recombination_file, chromosome):
+    """
+    Parses recombination rates from Halldorsson et al., 2019
+
+    arguments:
+    - recombination_file with 7-line header
+      and 5 columns: Chr Begin End cMperMb cM
+
+    returns:
+    - haploblock_boundaries: list of tuples with haploblock boundaries (start, end)
+    """
+    if not chromosome.startswith("chr"):
+        chromosome = "chr" + str(chromosome)
+    
+    haploblock_boundaries = []  # start at pos==1
+    positions = []
+    rates = []
+    high_rates = []
+    high_rates_positions = []
+
+    try:
+        f = open(recombination_file, 'r')
+    except Exception as e:
+        logger.error("Opening provided recombination file %s: %s", recombination_file, e)
+        raise Exception("Cannot open provided recombination file")
+
+    for line in f:
+        # skip header
+        if line.startswith("#"):
+            continue
+
+        split_line = line.rstrip().split('\t')
+
+        if len(split_line) != 5:
+            logger.error("Recombination file %s has bad line (not 5 tab-separated fields): %s",
+                         recombination_file, line)
+            raise Exception("Bad line in the recombination file")
+
+        (chr, start, end, rate, cM) = split_line
+
+        if chr == chromosome:
+            positions.append(int(start))
+            rates.append(float(rate))
+    
+    assert len(positions) == len(rates)
+
+    # find positions with recombination rate > 10*avg
+    avg_rate = sum(rates) / len(rates)
+
+    for i in range(len(rates)):
+        if rates[i] > 10 * avg_rate:
+            high_rates.append(rates[i])
+            high_rates_positions.append(positions[i])
+    
+    # add first haploblock
+    haploblock_boundaries.append((1, high_rates_positions[0]))
+    
+    for i in range(1, len(high_rates)):
+        start = high_rates_positions[i - 1]
+        end = high_rates_positions[i]
+        haploblock_boundaries.append((start, end))
+    
+    # add last haploblock
+    haploblock_boundaries.append((high_rates_positions[-1], positions[-1]))
+
+    logger.info("Found %i haploblocks", len(haploblock_boundaries))
+    
+    return(haploblock_boundaries)
 
 
 def parse_haploblock_boundaries(boundaries_file):
@@ -258,17 +327,49 @@ def extract_region_from_fasta(fasta, chr, start, end, out):
     return(output_fasta)
 
 
-def variant_counts_to_TSV(haploblock2count, out):
+def parse_clusters(clusters_file):
     """
+    Parses clusters file from MMSeqs2 (no header) with 2 columns: representative, individual
+    assing unique ids for each cluster.
+    We want to create unique cluster IDs based on cluster representatives,
+    and match individual to cluster IDs.
+
     arguments:
-    - haploblock2count: dict, key=(start, end), value=[mean, stdev]
+    - clusters_file
+
+    returns:
+    - individual2cluster: dict, key=individual, value=unique clusterID
+    - num_clusters: int
     """
-    with open(os.path.join(out, "variant_counts.tsv"), 'w') as f:
-        # header
-        f.write("START\tEND\tMEAN\tSTDEV\n")
-        for (start, end) in haploblock2count:
-            # mean and stdev in scientific notation with 3 significant digits
-            mean = "{:.3g}".format(haploblock2count[(start, end)][0])
-            stdev = "{:.3g}".format(haploblock2count[(start, end)][1])
-            
-            f.write(str(start) + "\t" + str(end) + "\t" + str(mean) + "\t" + str(stdev) + "\n")
+    try:
+        f = open(clusters_file, 'r')
+    except Exception as e:
+        logger.error("Opening provided clusters file %s: %s", clusters_file, e)
+        raise Exception("Cannot open provided clusters file")
+    
+    representative2cluster = {}
+    individual2representative = {}
+    individual2cluster = {}
+    num_clusters = 0
+    for line in f:
+        split_line = line.rstrip().split('\t')
+
+        if len(split_line) != 2:
+            logger.error("Clusters file %s has bad line (not 2 tab-separated fields): %s",
+                         clusters_file, line)
+            raise Exception("Bad line in the clusters file")
+        
+        (representative, individual) = split_line
+        
+        if not representative in representative2cluster:
+            representative2cluster[representative] = num_clusters
+            num_clusters += 1
+
+        individual2representative[individual] = representative
+    
+    for individual in individual2representative:
+        representative = individual2representative[individual]
+        cluster = representative2cluster[representative]
+        individual2cluster[individual] = cluster
+
+    return(individual2cluster, num_clusters)
