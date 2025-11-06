@@ -135,20 +135,33 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
 
     # search for variants in VCF
     query = chr + ":" + ",".join(variants)
+    last_variant_pos = variants[-1]
+    query = f"{chr}:{first_variant_pos}-{end}"
     sub_vcf = subprocess.run(["bcftools", "query",
                              "-f", "%CHROM\t%POS[\t%GT]\n",
                              "-s", ",".join(samples),
                              "--force-samples",
                              "-r", query,
-                             vcf],
+                             str(vcf)],
                              capture_output=True,
                              text=True,
                              check=True).stdout.splitlines()
     
+    variant_indices = {}
+    for (i, pos) in enumerate(variants):
+        variant_indices[str(pos)] = i
+
+    variants_set = set(str(variant) for variant in variants)
     # populate variant hashes with "1"s
-    for (variant_count, line) in enumerate(sub_vcf):
+    for line in sub_vcf:
         line_split = line.split("\t")
         chrom, pos, *genotypes = line_split
+        if pos not in variant_indices:
+            continue
+        if not pos in variants_set:
+            continue
+
+        idx = variant_indices[pos]
         for (sample_count, genotype) in enumerate(genotypes):
             sample = samples[sample_count]
             if '|' not in genotype:
@@ -160,9 +173,9 @@ def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
             individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
 
             if hap0 == "1":
-                variant2hash[individual_1][variant_count] = "1"
+                variant2hash[individual_1][idx] = "1"
             if hap1 == "1":
-                variant2hash[individual_2][variant_count] = "1"
+                variant2hash[individual_2][idx] = "1"
 
     # converst hash lists to strings 
     for individual in variant2hash:
@@ -241,8 +254,8 @@ def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, o
     logger.info("Found %i haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
-    ## samples = data_parser.parse_samples(samples_file)
-    samples = data_parser.parse_samples_from_vcf(vcf)
+    samples = data_parser.parse_samples(samples_file)
+    # samples = data_parser.parse_samples_from_vcf(vcf)
     logger.info("Found %i samples", len(samples))
 
     # dict for variant counts, key=(start, end), value=list(mean, stdev)
