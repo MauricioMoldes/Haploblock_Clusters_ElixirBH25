@@ -27,7 +27,7 @@ make
 make install
 
 
-# create simlinks for access everywhere
+# create simlinks for access everywhere (or export PATH)
 cd /usr/bin
 sudo ln -s ~/samtools-1.22.1/samtools .
 sudo ln -s ~/bcftools-1.22/bcftools .
@@ -35,7 +35,7 @@ sudo ln -s ~/htslib-1.22.1/bgzip .
 sudo ln -s ~/htslib-1.22.1/tabix .
 
 # MMSeqs2
-Download a binary from https://dev.mmseqs.com/latest/
-tar -xvzf mmseqs-linux-avx2.tar.gz
+Download an appropriate binary from https://dev.mmseqs.com/latest/
+tar -xvzf mmseqs-linux-*.tar.gz
 cd /usr/bin
-ln -s ~/Software/mmseqs/bin/mmseqs
+ln -s mmseqs/bin/mmseqs
