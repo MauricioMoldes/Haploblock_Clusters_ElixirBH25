@@ -268,10 +268,11 @@ Installed via [Python venv](https://docs.python.org/3/library/venv.html) with th
 python -m venv --system-site-packages ~/pyEnv_ElixirBH2025
 source ~/pyEnv_ElixirBH2025/bin/activate
 pip install --upgrade pip
-pip install numpy pandas scipy matplotlib
-```
+pip install numpy
 
-Check [requirements.txt](requirements.txt) for versioning.
+# for notebooks/haploblock_breakpoints.ipynb
+pip install pandas scipy matplotlib
+```
 
 
 # Acknowlegdements

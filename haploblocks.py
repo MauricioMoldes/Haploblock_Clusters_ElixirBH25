@@ -4,6 +4,8 @@ import logging
 import argparse
 import pathlib
 
+import numpy
+
 import data_parser
 
 # set up logger, using inherited config, in case we get called as a module
