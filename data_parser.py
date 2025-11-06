@@ -373,3 +373,83 @@ def parse_clusters(clusters_file):
         individual2cluster[individual] = cluster
 
     return(individual2cluster, num_clusters)
+
+
+def parse_variant_hashes(variant_hashes):
+    """
+    Parses file with variant hashes with two columns: INDIVIDUAL HASH
+
+    arguments:
+    - variant_hashes: pathlib.Path
+    
+    returns:
+    - variant2hash: dict, key=individual, key=hash
+    """
+    variant2hash = {}
+
+    try:
+        f = open(variant_hashes, 'r')
+    except Exception as e:
+        logger.error("Opening provided variant hashes file %s: %s", variant_hashes, e)
+        raise Exception("Cannot open provided variant hashes file")
+    
+    # skip header
+    line = f.readline()
+    if not line.startswith("INDIVIDUAL\t"):
+        logging.error("hashes file %s is headerless? expecting headers but got %s",
+                      variant_hashes, line)
+        raise Exception("hashes file problem")
+    
+    for line in f:
+        split_line = line.rstrip().split('\t')
+
+        if len(split_line) != 2:
+            logger.error("Hashes file %s has bad line (not 2 tab-separated fields): %s",
+                         variant_hashes, line)
+            raise Exception("Bad line in the hashes file")
+        
+        (individual, hash) = split_line
+
+        variant2hash[individual] = hash
+
+    return(variant2hash)
+
+
+def parse_haploblock_hashes(haploblock_hashes):
+    """
+    Parses file with haploblock hashes with 3 columns: START END HASH
+
+    arguments:
+    - haploblock_hashes: pathlib.Path
+    
+    returns:
+    - haploblock2hash: dict, key=(start, end), key=hash
+    """
+    haploblock2hash = {}
+
+    try:
+        f = open(haploblock_hashes, 'r')
+    except Exception as e:
+        logger.error("Opening provided haploblock hashes file %s: %s", haploblock_hashes, e)
+        raise Exception("Cannot open provided haploblock hashes file")
+    
+    # skip header
+    line = f.readline()
+    if not line.startswith("START\t"):
+        logging.error("hashes file %s is headerless? expecting headers but got %s",
+                      haploblock_hashes, line)
+        raise Exception("hashes file problem")
+    
+    for line in f:
+        split_line = line.rstrip().split('\t')
+
+        if len(split_line) != 3:
+            logger.error("Hashes file %s has bad line (not 3 tab-separated fields): %s",
+                         haploblock_hashes, line)
+            raise Exception("Bad line in the hashes file")
+        
+        (start, end, hash) = split_line
+
+        haploblock2hash[(start, end)] = hash
+
+    return(haploblock2hash)
