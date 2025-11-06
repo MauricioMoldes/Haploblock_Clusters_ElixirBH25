@@ -5,12 +5,12 @@
 # How to use this repo
 
 ```
-git clone this repo
+git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_ElixirBH25.git
 cd Haploblock_Clusters_ElixirBH25/
 ```
 ### Configure Python environment
 
-Installed via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
+Install via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
 
 ```
 python3 -m venv --system-site-packages ~/pyEnv_ElixirBH2025
@@ -21,10 +21,9 @@ pip install numpy
 ```
 ### Install other dependencies
 
-Please go to [install_dependencies.txt](install_dependencies.txt) and follow the instructions *carefully*
+Please go to [install_dependencies.txt](install_dependencies.txt) and follow the instructions *carefully*.
 
-Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin`.
-
+Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin` or exported to PATH.
 
 # Data
 
@@ -44,7 +43,7 @@ gzip -d aau1043_datas3.gz
 File `aau1043_datas3` contains averaged maternal and paternal recombination rates.
 
 2. 1000Genomes, HGSVC, Phase 3
-For an example, we use chromosome 6.  If you would like to run all chromosomes, download all of the phased vcf files.  
+For an example, we use chromosome 6. If you would like to run all chromosomes, download all of the phased VCF files.  
 Phased VCF file of chromosome 6 (2548 samples):
 ```
 wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
@@ -77,6 +76,7 @@ TBD
 # Run pipeline
 
 ```
+# If you are in data/
 cd ..
 
 ```
@@ -109,7 +109,7 @@ python haploblock_phased_sequences.py \
     --variants data/variants_of_interest.txt \
     --out data/CHB/
 ```
-*If you would like to run one haploblock as a test, please swap in haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
+*If you would like to run one haploblock as a test, please swap in data/haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
 
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 
