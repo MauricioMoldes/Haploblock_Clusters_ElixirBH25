@@ -71,12 +71,19 @@ def main(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) ->
     logger.info(f"Parsing recombination file: {recombination_file}")
     haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
 
+    # Ensure output directory exists
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     logger.info("Generating haploblock hashes")
     haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
 
     logger.info("Saving haploblock boundaries and hashes")
     haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
     haploblock_hashes_to_tsv(haploblock2hash, chrom, out_dir)
+
+
+
+
 
 
 if __name__ == "__main__":
