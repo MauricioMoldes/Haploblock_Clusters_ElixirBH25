@@ -1,363 +1,210 @@
-import os
 import sys
 import logging
 import argparse
 import pathlib
 import subprocess
-
-import numpy
-
+import numpy as np
 import data_parser
+# from multiprocessing import Pool, cpu_count  # optional parallel version
 
-# set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
 
-def count_variants(vcf):
+def count_variants(vcf: pathlib.Path) -> tuple[int, int]:
     """
-    Count the number of variants in the vcf file
+    Count the number of variants in a bgzipped VCF file.
 
-    arguments:
-    - vcf: pathlib.Path to bgzipped vcf
-
-    returns:
-    - count_0: int, number of variants on haplotype 0
-    - count_1: int, number of variants on haplotype 1
+    Returns:
+        (count_hap0, count_hap1)
     """
-    # extract genotype (GT) strings
-    GTs = subprocess.run(["bcftools", "query",
-                          "-f", "[ %GT]",
-                          vcf],
-                          capture_output=True,
-                          text=True,
-                          check=True)
+    result = subprocess.run(
+        ["bcftools", "query", "-f", "[ %GT]", vcf],
+        capture_output=True,
+        text=True,
+        check=True
+    )
 
-    count_0 = 0  # left haplotype
-    count_1 = 0  # right haplotype
+    count_0 = count_1 = 0
+    for line in result.stdout.split():
+        if line in {".", "./.", ".|."}:
+            continue
 
-    for line in GTs.stdout.splitlines():
-        line = line.strip()
-        if not line or line == "." or line == "./." or line == ".|.":
-            continue  # skip missing genotypes
-
-        # Handle phased and unphased cases
         if "|" in line:
-            parts = line.split("|")
+            left, right = line.split("|")
         elif "/" in line:
-            parts = line.split("/")
+            left, right = line.split("/")
         else:
-            continue  # skip malformed entries
+            continue
 
-        if len(parts) != 2:
-            continue  # unexpected format, skip
+        count_0 += left == "1"
+        count_1 += right == "1"
 
-        (left, right) = parts
-
-        if left == "1":
-            count_0 += 1
-        if right == "1":
-            count_1 += 1
-
-    return(count_0, count_1)
+    return count_0, count_1
 
 
-def generate_consensus_fasta(fasta, vcf, out):
+def generate_consensus_fasta(ref_fasta: pathlib.Path, vcf: pathlib.Path, out_dir: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     """
-    Apply variants from VCF to reference sequence
-
-    Generates the following files in out/ :
-    - ref_chr6.fa.gz.fai
-    - ref_chr6.fa.gz.gzi
-    - chr{chr}_region_{start}-{end}.fa.gz
-
-    returns:
-    - output_hap0: pathlib.Path to consensus fasta with hap0
-    - output_hap1: pathlib.Path to consensus fasta with hap1
+    Apply variants from VCF to the reference to create phased consensus FASTA files.
     """
-    output_hap0 = os.path.join(out, "tmp", "consensus_fasta", pathlib.Path(vcf.stem).stem + "_hap0.fa")
-    output_hap1 = os.path.join(out, "tmp", "consensus_fasta", pathlib.Path(vcf.stem).stem + "_hap1.fa")
-    
-    # create a consensus sequence (fasta) from reference and variants extracted from VCF
-    # haploid sequence 1
-    subprocess.run(["bcftools", "consensus",
-                    "-H", "1",
-                    "-f", fasta,
-                    vcf],
-                    stdout=open(output_hap0, "w"),
-                    check=True)
-    
-    # haploid sequence 2
-    subprocess.run(["bcftools", "consensus",
-                    "-H", "2",
-                    "-f", fasta,
-                    vcf],
-                    stdout=open(output_hap1, "w"),
-                    check=True)
+    tmp_dir = out_dir / "tmp" / "consensus_fasta"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    return(output_hap0, output_hap1)
+    output_hap0 = tmp_dir / f"{vcf.stem}_hap0.fa"
+    output_hap1 = tmp_dir / f"{vcf.stem}_hap1.fa"
+
+    for hap, outfile in [(1, output_hap0), (2, output_hap1)]:
+        with outfile.open("w") as f_out:
+            subprocess.run(
+                ["bcftools", "consensus", "-H", str(hap), "-f", str(ref_fasta), str(vcf)],
+                stdout=f_out,
+                check=True
+            )
+
+    return output_hap0, output_hap1
 
 
-def generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples):
+def generate_variant_hashes(variants: list[str], vcf: pathlib.Path, chrom: str, haploblock_boundaries, samples: list[str]) -> dict[str, str]:
     """
-    Generate a "variant hash" for every variant of interest,
-    ie an integer number with len(variants) digits, each corresponding to variant of interest:
-    1 if variant in vcf, 0 otherwise
-
-    arguments:
-    - vcf: pathlib.Path to bgzipped vcf
-    - variants: list of variants of interest
-
-    returns:
-    - variant2hash: dict, key=str({sample}_chr{chr}_region_{start}-{end}_hap0),
-      value=variant hash
-    """        
-    # find haploblock with variants of interest
-    first_variant_pos = variants[0]  # we assume that the user provided variants within the same haploblock
-    start = 0
-    end = 0
+    Generate binary variant presence hashes for all samples and haplotypes.
+    """
+    first_variant_pos = variants[0]
+    start = end = None
     for (bound_start, bound_end) in haploblock_boundaries:
         if int(bound_start) <= int(first_variant_pos) <= int(bound_end):
-            start = bound_start
-            end = bound_end
+            start, end = bound_start, bound_end
             break
-        else:
-            logger.error("Cannot find variant %s", first_variant_pos)
-            raise Exception("Variants not in any haploblock")
 
-    # initialize all variant hashes to lists of "0"s
-    variant2hash = {}
-    for sample in samples:
-        individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
-        individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
+    if start is None:
+        raise ValueError(f"Variant {first_variant_pos} not found in any haploblock")
 
-        variant2hash[individual_1] = ["0"] * len(variants)
-        variant2hash[individual_2] = ["0"] * len(variants)
+    variant_indices = {str(pos): i for i, pos in enumerate(variants)}
+    variant2hash = {
+        f"{sample}_chr{chrom}_region_{start}-{end}_hap{h}": ["0"] * len(variants)
+        for sample in samples for h in (0, 1)
+    }
 
-    # search for variants in VCF
-    query = chr + ":" + ",".join(variants)
-    last_variant_pos = variants[-1]
-    query = f"{chr}:{first_variant_pos}-{end}"
-    sub_vcf = subprocess.run(["bcftools", "query",
-                             "-f", "%CHROM\t%POS[\t%GT]\n",
-                             "-s", ",".join(samples),
-                             "--force-samples",
-                             "-r", query,
-                             str(vcf)],
-                             capture_output=True,
-                             text=True,
-                             check=True).stdout.splitlines()
-    
-    variant_indices = {}
-    for (i, pos) in enumerate(variants):
-        variant_indices[str(pos)] = i
+    query_region = f"{chrom}:{first_variant_pos}-{end}"
+    result = subprocess.run(
+        ["bcftools", "query", "-f", "%CHROM\t%POS[\t%GT]\n",
+         "-s", ",".join(samples), "--force-samples", "-r", query_region, str(vcf)],
+        capture_output=True, text=True, check=True
+    )
 
-    variants_set = set(str(variant) for variant in variants)
-    # populate variant hashes with "1"s
-    for line in sub_vcf:
-        line_split = line.split("\t")
-        chrom, pos, *genotypes = line_split
+    for line in result.stdout.splitlines():
+        chrom, pos, *genotypes = line.split("\t")
         if pos not in variant_indices:
             continue
-        if not pos in variants_set:
-            continue
-
         idx = variant_indices[pos]
-        for (sample_count, genotype) in enumerate(genotypes):
-            sample = samples[sample_count]
-            if '|' not in genotype:
-                logger.warning("variant %s:%s is unphased or missing, skipping it",  chrom, pos)
+
+        for sample_idx, genotype in enumerate(genotypes):
+            if "|" not in genotype:
                 continue
-            hap0, hap1 = genotype.split('|')
-
-            individual_1 = f"{sample}_chr{chr}_region_{start}-{end}_hap0"
-            individual_2 = f"{sample}_chr{chr}_region_{start}-{end}_hap1"
-
+            hap0, hap1 = genotype.split("|")
+            sample = samples[sample_idx]
             if hap0 == "1":
-                variant2hash[individual_1][idx] = "1"
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap0"][idx] = "1"
             if hap1 == "1":
-                variant2hash[individual_2][idx] = "1"
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap1"][idx] = "1"
 
-    # converst hash lists to strings 
-    for individual in variant2hash:
-        hashList = variant2hash[individual]
-        hashStr = "".join(hashList)
-        variant2hash[individual] = hashStr
-    
-    return(variant2hash)
+    # convert hash lists to strings
+    return {k: "".join(v) for k, v in variant2hash.items()}
+
+    # -------------------------------------------------------------------------
+    # 💡 Perspective: Parallelize bcftools queries across haploblocks
+    # Using Pool to distribute haploblocks or samples.
+    #
+    # def process_region(region):
+    #     return generate_variant_hashes_for_region(...)
+    #
+    # with Pool(cpu_count()) as pool:
+    #     results = pool.map(process_region, haploblock_boundaries)
+    # -------------------------------------------------------------------------
 
 
-def variant_hashes_to_TSV(variant2hash, out):
-    """
-    arguments:
-    - variant2hash: dict, key=str({sample}_chr{chr}_region_{start}-{end}_hap0),
-      value=variant hash
-    """
-    with open(os.path.join(out, "variant_hashes.tsv"), 'w') as f:
-        # header
+def write_tsv_variant_hashes(variant2hash: dict[str, str], out_dir: pathlib.Path) -> None:
+    """Write variant hashes to TSV."""
+    out_path = out_dir / "variant_hashes.tsv"
+    with out_path.open("w") as f:
         f.write("INDIVIDUAL\tHASH\n")
-        for individual in variant2hash:
-            f.write(individual + "\t" + variant2hash[individual] + "\n")
+        f.writelines(f"{ind}\t{hash_}\n" for ind, hash_ in variant2hash.items())
 
 
-def variant_counts_to_TSV(haploblock2count, out):
-    """
-    arguments:
-    - haploblock2count: dict, key=(start, end), value=[mean, stdev]
-    """
-    with open(os.path.join(out, "variant_counts.tsv"), 'w') as f:
-        # header
+def write_tsv_variant_counts(haploblock2count: dict[tuple[int, int], list[float]], out_dir: pathlib.Path) -> None:
+    """Write mean and stdev variant counts to TSV."""
+    out_path = out_dir / "variant_counts.tsv"
+    with out_path.open("w") as f:
         f.write("START\tEND\tMEAN\tSTDEV\n")
-        for (start, end) in haploblock2count:
-            # mean and stdev in scientific notation with 3 significant digits
-            mean = "{:.3g}".format(haploblock2count[(start, end)][0])
-            stdev = "{:.3g}".format(haploblock2count[(start, end)][1])
-            
-            f.write(str(start) + "\t" + str(end) + "\t" + str(mean) + "\t" + str(stdev) + "\n")
+        for (start, end), (mean, stdev) in haploblock2count.items():
+            f.write(f"{start}\t{end}\t{mean:.3g}\t{stdev:.3g}\n")
 
 
-def main(boundaries_file, samples_file, vcf, ref, chr_map, chr, variants_file, out):
+def main(boundaries_file: pathlib.Path, samples_file: pathlib.Path | None,
+         vcf: pathlib.Path, ref: pathlib.Path, chr_map: pathlib.Path,
+         chrom: str, variants_file: pathlib.Path, out_dir: pathlib.Path) -> None:
 
-    # sanity check
-    if not os.path.exists(boundaries_file):
-        logger.error(f"File {boundaries_file} does not exist.")
-        raise Exception("File does not exist")
-    if not os.path.exists(vcf):
-        logger.error(f"File {vcf} does not exist.")
-        raise Exception("File does not exist")
-    if not os.path.exists(ref):
-        logger.error(f"File {ref} does not exist.")
-        raise Exception("File does not exist")
-    if not os.path.exists(chr_map):
-        logger.error(f"File {chr_map} does not exist.")
-        raise Exception("File does not exist")
-    if not os.path.exists(variants_file):
-        logger.error(f"File {variants_file} does not exist.")
-        raise Exception("File does not exist")
-    
-    # create out/ and a tmp/ directory in out/ for temporary files
-    if os.path.exists(os.path.join(out, "tmp")):
-        logger.error(f"Output directory {os.path.join(out)} exists, please remove it")
-        raise Exception("Output directory exists")
-    os.makedirs(out)
-    if os.path.exists(os.path.join(out, "tmp")):
-        logger.info(f"Temporary directory {os.path.join(out, 'tmp')} exists, removing it")
-        subprocess.run(["rm", "-r", os.path.join(out, "tmp")],
-                       check=True)
-    os.mkdir(os.path.join(out, "tmp"))
-    os.mkdir(os.path.join(out, "tmp", "consensus_fasta"))
+    # Ensure output dirs exist
+    tmp_dir = out_dir / "tmp"
+    if tmp_dir.exists():
+        logger.error(f"Output directory {out_dir} already exists; remove it first.")
+        raise FileExistsError(f"{out_dir} exists")
+    (tmp_dir / "consensus_fasta").mkdir(parents=True, exist_ok=True)
 
     logger.info("Parsing haploblock boundaries")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
-    logger.info("Found %i haploblocks", len(haploblock_boundaries))
+    logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
-    if samples_file:
-        logger.info("Parsing samples from file")
-        samples = data_parser.parse_samples(samples_file)
-    else:
-        logger.info("Parsing samples from the VCF file")
-        samples = data_parser.parse_samples_from_vcf(vcf)
-    logger.info("Found %i samples", len(samples))
+    logger.info("Parsing samples")
+    samples = (data_parser.parse_samples(samples_file)
+               if samples_file else data_parser.parse_samples_from_vcf(vcf))
+    logger.info("Found %d samples", len(samples))
 
-    # dict for variant counts, key=(start, end), value=list(mean, stdev)
-    haploblock2count = {}
-
-    # we assume that the user provided variants within the same haploblock,
-    # need to check it later
+    logger.info("Parsing variants of interest")
     variants = data_parser.parse_variants_of_interest(variants_file)
-    variant2hash = generate_variant_hashes(variants, vcf, chr, haploblock_boundaries, samples)
-    variant_hashes_to_TSV(variant2hash, out)
 
+    variant2hash = generate_variant_hashes(variants, vcf, chrom, haploblock_boundaries, samples)
+    write_tsv_variant_hashes(variant2hash, out_dir)
+
+    haploblock2count = {}
     for (start, end) in haploblock_boundaries:
-        logger.info(f"Generating phased VCF for haploblock {start}-{end}")
-        region_vcf = data_parser.extract_region_from_vcf(vcf, chr, chr_map, start, end, out)
+        logger.info("Processing haploblock %s-%s", start, end)
+        region_vcf = data_parser.extract_region_from_vcf(vcf, chrom, chr_map, start, end, out_dir)
+        region_fasta = data_parser.extract_region_from_fasta(ref, chrom, start, end, out_dir)
 
-        logger.info(f"Generating phased fasta for haploblock {start}-{end}")
-        region_fasta = data_parser.extract_region_from_fasta(ref, chr, start, end, out)
-
-        # list of the number of variants per sample and per haplotype
-        haploblock_counts = []
-
-        logger.info(f"Generating consensus fasta files for haploblock {start}-{end}")
+        counts = []
         for sample in samples:
-            # logger.info(f"Generating phased VCF for haploblock {start}-{end} for sample %s", sample)
-            sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out)
+            sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out_dir)
+            count_0, count_1 = count_variants(sample_vcf)
+            counts.extend([count_0, count_1])
+            generate_consensus_fasta(region_fasta, sample_vcf, out_dir)
 
-            # calculate the number variants in the sample
-            (count_0, count_1) = count_variants(sample_vcf)
-            haploblock_counts.append(count_0)
-            haploblock_counts.append(count_1)
+        haploblock2count[(start, end)] = [np.mean(counts), np.std(counts)]
 
-            (sample_hap0, sample_hap1) = generate_consensus_fasta(region_fasta, sample_vcf, out)
-
-        # calculate mean and stdev of the number variants
-        mean = sum(haploblock_counts) / len(haploblock_counts)
-        stdev = numpy.std(haploblock_counts)
-
-        haploblock2count[(start, end)] = [mean, stdev]
-    
-    variant_counts_to_TSV(haploblock2count, out)
+    write_tsv_variant_counts(haploblock2count, out_dir)
 
 
 if __name__ == "__main__":
-    script_name = os.path.basename(sys.argv[0])
-    # configure logging, sub-modules will inherit this config
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.DEBUG)
-    # set up logger: we want script name rather than 'root'
-    logger = logging.getLogger(script_name)
-
-    parser = argparse.ArgumentParser(
-        prog=script_name,
-        description="TODO"
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.DEBUG,
     )
-    
-    parser.add_argument('--boundaries_file',
-                        help='Path to boundaries file generated from Halldorsson et al., 2019',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--vcf',
-                        help='Path to phased VCF file (bgzipped) from 1000Genomes',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--ref',
-                        help='Path to reference sequence (bgzipped)',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--chr_map',
-                        help='Path to chr_map: one mapping per line, ie "6 chr6"',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--chr',
-                        help='chromosome',
-                        type=str,
-                        required=True)
-    parser.add_argument('--variants',
-                        help='Path to file with variants of interest, one per line, in format chr:pos',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--out',
-                        help='Path to output folder',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--samples_file',
-                        help='Path to samples file from 1000Genomes',
-                        type=pathlib.Path,
-                        required=False)
+    logger = logging.getLogger(pathlib.Path(sys.argv[0]).name)
+
+    parser = argparse.ArgumentParser(description="Generate haploblock phased sequences and hashes.")
+    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True)
+    parser.add_argument("--vcf", type=pathlib.Path, required=True)
+    parser.add_argument("--ref", type=pathlib.Path, required=True)
+    parser.add_argument("--chr_map", type=pathlib.Path, required=True)
+    parser.add_argument("--chr", type=str, required=True)
+    parser.add_argument("--variants", type=pathlib.Path, required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--samples_file", type=pathlib.Path, required=False)
 
     args = parser.parse_args()
-
     try:
-        main(boundaries_file=args.boundaries_file,
-             samples_file=args.samples_file,
-             vcf=args.vcf,
-             ref=args.ref,
-             chr_map=args.chr_map,
-             chr=args.chr,
-             variants_file=args.variants,
-             out=args.out)
-
+        main(args.boundaries_file, args.samples_file, args.vcf, args.ref,
+             args.chr_map, args.chr, args.variants, args.out)
     except Exception as e:
-        # details on the issue should be in the exception name, print it to stderr and die
-        sys.stderr.write("ERROR in " + script_name + " : " + repr(e) + "\n")
+        sys.stderr.write(f"ERROR in {pathlib.Path(sys.argv[0]).name}: {repr(e)}\n")
         sys.exit(1)
+
