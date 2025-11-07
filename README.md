@@ -8,6 +8,8 @@
 git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_ElixirBH25.git
 cd Haploblock_Clusters_ElixirBH25/
 ```
+
+
 ### Configure Python environment
 
 Install via [Python venv](https://docs.python.org/3/library/venv.html) with the following command:
@@ -19,11 +21,14 @@ pip install --upgrade pip
 pip install numpy
 
 ```
+
+
 ### Install other dependencies
 
 Please go to [install_dependencies.txt](install_dependencies.txt) and follow the instructions *carefully*.
 
 Install samtools, bcftools, htslib (https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin` or exported to PATH.
+
 
 # Data
 
@@ -35,8 +40,8 @@ cd data/
 
 1. high-resolution recombination map from Halldorsson et al., 2019 with empirically defined recombination rates:
 ```
-Download https://www.science.org/doi/suppl/10.1126/science.aau1043/suppl_file/aau1043_datas3.gz
-Upload the file to the data/ directory in this repo
+## Download https://www.science.org/doi/suppl/10.1126/science.aau1043/suppl_file/aau1043_datas3.gz
+## Upload the file to the data/ directory in this repo
 gzip -d aau1043_datas3.gz
 ```
 
@@ -58,11 +63,11 @@ wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_pr
 ```
 wget https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr6.fa.gz
 gzip -d chr6.fa.gz
-### If you do not have bgzip, install it (see install_dependencies.txt)
+## If you do not have bgzip, install it (see install_dependencies.txt)
 bgzip chr6.fa
 ```
 
-Optionally, this is for testing, if you want to run this for one population from 1000Genomes, you will also need a TSV file with samples in data/, eg. CHB (113 samples): https://www.internationalgenome.org/data-portal/population/CHB
+Optionally, this is for testing, if you want to run this for one population from 1000Genomes, you will also need a TSV file with the list of samples in data/, eg. CHB (113 samples): https://www.internationalgenome.org/data-portal/population/CHB
 
 
 # Workflow
@@ -73,12 +78,13 @@ TBD
 # Run pipeline
 
 ```
-# If you are in data/
+## If you are in data/
 cd ..
 ```
 
 
 #### 1. Generate haploblock boundaries and hashes for chr6 using the Halldorsson2019 recombination map:
+
 ```
 python haploblocks.py \
     --recombination_file data/Halldorsson2019/aau1043_datas3 \
@@ -86,74 +92,121 @@ python haploblocks.py \
     --out out_dir/
 ```
 
-This creates haploblock boundaries, a TSV file (with header) with 2 columns (START END), as well as haploblock hashes, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, ie integers with len(haploblock_boundaries) digits 1/0s. All these are saved into `out_dir/`.
+This script creates **haploblock boundaries**, a TSV file (with header) with 2 columns (START END), as well as **haploblock hashes**, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, ie integers with len(haploblock_boundaries) digits 1/0s. All files are saved into `out_dir/`.
+
+For a detailed description of how haplobock boundaries are defined see: [https://github.com/jedrzejkubica/Elixir-BH-2025](https://github.com/jedrzejkubica/Elixir-BH-2025) and Halldorsson2019.
 
 
 #### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files) and individual hashes:
+
+Here is the instruction for **one haploblock (TNFa)**:
 ```
 python haploblock_phased_sequences.py \
-    --boundaries_file data/haploblock_boundaries_chr6.tsv \
+    --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv \
     --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
     --chr 6 \
-    --variants out_dir/variants_of_interest.txt \
+    --variants data/variants_of_interest.txt \
+    --out out_dir/TNFa/
+```
+
+Here is the instruction for **all haploblocks**:
+```
+python haploblock_phased_sequences.py \
+    --boundaries_file out_dir/haploblock_boundaries_chr6.tsv \
+    --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+    --ref data/chr6.fa.gz \
+    --chr_map data/chr_map \
+    --chr 6 \
+    --variants data/variants_of_interest.txt \
     --out out_dir/
 ```
-*If you would like to run one haploblock as a test, please swap in data/haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
 
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, create file chr_map with one mapping per line (e.g., "6 chr6") and provide it using --chr_map.
 
-This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position". We also calculate the mean and average of the number of variants per haploblock, they are saved in **variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV). We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **variant_hashes.tsv** (with two columns: INDIVIDUAL HASH)
-
-Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes and provide it as input to the script:
+Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes (data/igsr-chb.tsv.tsv) and provide it as follows:
 ```
 python haploblock_phased_sequences.py [...] --samples_file data/igsr-chb.tsv.tsv
 ```
 
-Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
+This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position". We also calculate the mean and average of the number of variants per haploblock, they are saved in **out_dir/variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV). We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **out_dir/variant_hashes.tsv** (with two columns: INDIVIDUAL HASH)
+
+It creates out_dir/tmp/ and generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). 
+
+Generate one merged phased fasta file per haploblock:
+
+Here is the instruction for **one haploblock (TNFa)**:
+```
+./merge_fasta_per_region.sh out_dir/TNFa/tmp/consensus_fasta out_dir/TNFa/haploblock_phased_seq_merged
+
+## Remove the out_dir/TNFa/tmp/ directory if you want
+```
+
+Here is the instruction for **all haploblocks**:
 ```
 ./merge_fasta_per_region.sh out_dir/tmp/consensus_fasta out_dir/haploblock_phased_seq_merged
-Remove the out_dir/tmp/ directory
+
+## Remove the out_dir/tmp/ directory if you want
 ```
 
-## we will remove --samples_file later
+#### 3. Generate haploblock clusters with MMSeqs2:
 
-#### 3. Generate haploblock clusters
+Make sure MMSeqs is available in PATH.
 
-Cluster haploblock phased sequences using MMSeqs2:
+Here is the instruction for **one haploblock (TNFa)**:
 ```
 python clusters.py \
-    --boundaries_file data/haploblock_boundaries_chr6.tsv \
-    --merged_consensus_dir data/haploblock_phased_seq_merged \
-    --variant_counts data/variant_counts.tsv \
+    --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv \
+    --merged_consensus_dir out_dir/TNFa/haploblock_phased_seq_merged \
+    --variant_counts out_dir/TNFa/variant_counts.tsv \
     --chr 6 \
-    --out data/
+    --out out_dir/TNFa/
 ```
-*If you would like to run one haploblock as a test, please swap in data/haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
 
-This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a TSV file in directory data/clusters/.
+Here is the instruction for **all haploblocks**:
+```
+python clusters.py \
+    --boundaries_file out_dir/haploblock_boundaries_chr6.tsv \
+    --merged_consensus_dir out_dir/haploblock_phased_seq_merged \
+    --variant_counts out_dir/variant_counts.tsv \
+    --chr 6 \
+    --out out_dir/
+```
+
+This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a cluster TSV file in directory **out_dir/clusters/**.
 
 
 ### 4. Generate variant hashes
 
-Each variant hash is a 64-character string of 0/1s. It contains:
+Here is the instruction for **one haploblock (TNFa)**:
+```
+python variant_hashes.py \
+    --clusters out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv \
+    --variant_hashes out_dir/TNFa/variant_hashes.tsv \
+    --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
+    --chr 6 \
+    --out out_dir/TNFa/
+```
+
+Here is the instruction for **all haploblocks**, please run it separately for every cluster TSV file:
+```
+python variant_hashes.py \
+    --clusters out_dir/clusters/cluster_file.tsv \
+    --variant_hashes out_dir/variant_hashes.tsv \
+    --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
+    --chr 6 \
+    --out out_dir/
+```
+
+This generates variants hashes, 64-character strings of 0/1s. Each individual hash (samples + haplotype) contains:
 - strand hash: 4 chars
 - chromosome hash: 10 chars
 - haploblock hash: 20 chars
 - cluster hash: 20 chars
 - variant hash: len(variants of interest) chars
 
-```
-python variant_hashes.py \
-    --clusters data/clusters/chr6_31480875-31598421_cluster.tsv \
-    --variant_hashes data/variant_hashes.tsv \
-    --haploblock_hashes data/haploblock_hashes_chr6.tsv \
-    --chr 6 \
-    --out data/
-```
-
-The output is a TSV file (with two columns: INDIVIDUAL HASH): individual_hashes.tsv in data/.
+The output is a TSV file (with two columns: INDIVIDUAL HASH) is out_dir/individual_hashes.tsv.
 
 
 ## Model
@@ -174,111 +227,6 @@ We generated haploblock phased sequences (format: sample_chr_region_start-end_ha
 - haploblock overlapping with height genes (TODO ref)
 
 + haploblock phased sequences and haploblock hashes for TNFa for all populations
-
-
-## Exploring recombination maps (pre-hackathon)
-
-All code for exploring recombination maps is in [haploblock_breakpoints.ipynb](notebooks/haploblock_breakpoints.ipynb)
-
-### Recombination map from Palsson et al., 2024
-
-How the data looks:
-
-| Chr | Position | map (cM) | cMperMb | DSBs/Mb per meiosis | deltaDSB | oNCO |
-|-----|----------|----------|---------|---------------------|----------|------|
-| chr1 | 500000 | 0.0465734638273716 | 0.051548998802900314 | 0.18732483685016632 | 0.9579851031303406 | 0.00024600245524197817 |
-| chr1 | 1500000 | 0.05668618530035019 | 0.36985400319099426 | 0.23414182662963867 | 0.7754221558570862 | 0.0006765067810192704 |
-| chr1 | 2500000 | 0.08809421956539154 | 1.2260290384292603 | 0.3768974542617798 | 0.5750330686569214 | 0.0022755227982997894 |
-| chr1 | 3500000 | 0.07209863513708115 | 1.9589810371398926 | 0.3275741636753082 | 0.3099609315395355 | 0.0027675277087837458 |
-| chr1 | 4500000 | 0.06319160014390945 | 2.5238749980926514 | 0.3032439053058624 | 0.1271921992301941 | 0.002952029462903738 |
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_all_columns_one_plot_norm.png)
-
-Are map (cM), cMperMb, DSBs/Mb per meiosis, deltaDSB and oNCO correlated?
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_all_columns_corr.png)
-
-We used DSB rate (DSBs/Mb per meiosis) to find haploblock boundaries.
-
-1) We found 12 positions with high recombination rates defined as **rate > 2*average**:
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_outliersAVG.png)
-
-| Position | Recombination rate (DSBs/Mb per meiosis) |
-|----------|------------------------------------------|
-| chr6:4500000 | 0.2726089060306549 |
-| chr6:5500000 | 0.2507183849811554 |
-| chr6:6500000 | 0.34163784980773926 |
-| chr6:7500000 | 0.2730921804904938 |
-| chr6:11500000 | 0.24522000551223755 |
-| chr6:15500000 | 0.27179062366485596 |
-| chr6:16500000 | 0.24810494482517242 |
-| chr6:43500000 | 0.24928732216358185 |
-| chr6:57500000 | 0.27551886439323425 |
-| chr6:58500000 | 0.37233930826187134 |
-| chr6:59500000 | 0.7373786568641663 |
-| chr6:166500000 | 0.25078296661376953 |
-
-
-2) We found 7 positions with high recombination rates defined as **rate > 1.5*IQR**:
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_boxplot.png)
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_outliersIQR.png)
-
-| Position | Recombination rate (DSBs/Mb per meiosis) |
-|----------|------------------------------------------|
-| chr6:4500000 | 0.2726089060306549 |
-| chr6:6500000 | 0.34163784980773926 |
-| chr6:7500000 | 0.2730921804904938 |
-| chr6:15500000 | 0.27179062366485596 |
-| chr6:57500000 | 0.27551886439323425 |
-| chr6:58500000 | 0.37233930826187134 |
-| chr6:59500000 | 0.7373786568641663 |
-
-3) We found 6 positions with high recombination rates defined as **peaks after Gaussian smooting**:
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_GS_peaks.png)
-
-| Position | Recombination rate (DSBs/Mb per meiosis) |
-|----------|------------------------------------------|
-| chr6:7500000 | 0.2730921804904938 |
-| chr6:38500000 | 0.08716981112957001 |
-| chr6:58500000 | 0.37233930826187134 |
-| chr6:90500000 | 0.12601755559444427 |
-| chr6:106500000 | 0.13935035467147827 |
-| chr6:165500000 | 0.2063562124967575 |
-
-For more information about Gaussian smoothing see: https://en.wikipedia.org/wiki/Gaussian_filter
-
-We compared different sigma for Gaussian smoothing:
-
-![alt text](figures/Palsson2024/recomb_map_chr6_mat_GS_compare_sigma.png)
-
-
-### Recombination map from Halldersson et al., 2019
-
-We used cMperMb to generate haploblock boundaries.
-
-1) We found 1398 positions with high recombination rates defined as **rate > 10*average**:
-
-2) We found 11855 positions with high recombination rates defined as **rate > 1.5*IQR**.
-
-3) We found 2287 positions with high recombination rates defined as **peaks after Gaussian smooting** (sigma=5). Zoom in on the first peak:
-
-![alt text](figures/Halldorsson2019/recomb_map_chr6_Halldorsson2019_GS_peaks_zoom_in.png)
-
-We compared different sigma for Gaussian smoothing:
-
-![alt text](figures/Halldorsson2019/recomb_map_chr6_Halldorsson2019_GS_compare_sigma_zoom_in.png)
-
-The number of peaks found with different sigma:
-| Sigma | Number of peaks |
-|-------|-----------------|
-| 1 | 8245 |
-| 3 | 3579 |
-| 5 | 2287 |
-| 10 | 1210 |
 
 
 # System requirements
