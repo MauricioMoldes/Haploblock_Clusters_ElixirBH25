@@ -1,117 +1,107 @@
-import os
 import sys
 import logging
 import argparse
 import pathlib
-
-import numpy
-
+import numpy as np
 import data_parser
+# from multiprocessing import Pool, cpu_count  # optional: enable if parallelizing
 
-# set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
-
 
 HAPLOBLOCK_HASH_LENGTH = 20
 
 
-def generate_haploblock_hashes(haploblock_boundaries):
+def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int, int]]) -> dict[tuple[int, int], str]:
     """
-    Generate a unique identifier, "haploblock hash", for every haploblock,
-    ie a string with HAPLOBLOCK_HASH_LENGTH digits (0/1s)
+    Generate unique binary hashes for each haploblock boundary.
 
-    returns:
-    - haploblock2hash: dict, key=(start, end), value=haploblock hash
+    Args:
+        haploblock_boundaries: List of (start, end) tuples.
+
+    Returns:
+        Dict mapping (start, end) -> binary hash string.
+
+    Notes:
+        For very large datasets (>10M haploblocks), consider enabling the
+        parallel version below for faster generation.
     """
-    haploblock2hash = {}
-    
-    idx = 0
-    for (start, end) in haploblock_boundaries:
-        hash = numpy.binary_repr(idx, width=HAPLOBLOCK_HASH_LENGTH)
-        haploblock2hash[(start, end)] = hash
-        idx += 1
-    
-    return(haploblock2hash)
+    n_blocks = len(haploblock_boundaries)
+    hashes = np.array([np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH) for i in range(n_blocks)])
+    return dict(zip(haploblock_boundaries, hashes))
+
+    # -------------------------------------------------------------------------
+    # Perspective: Parallelized Version (commented out)
+    # -------------------------------------------------------------------------
+    # If haploblock_boundaries is extremely large, this approach can
+    # speed up hash generation using all CPU cores.
+    #
+    # def _make_hash(i):
+    #     return np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH)
+    #
+    # n_blocks = len(haploblock_boundaries)
+    # with Pool(cpu_count()) as pool:
+    #     hashes = pool.map(_make_hash, range(n_blocks))
+    #
+    # return dict(zip(haploblock_boundaries, hashes))
+    # -------------------------------------------------------------------------
 
 
-def haploblocks_to_TSV(haploblock_boundaries, chr, out):
-    '''
-    Save haploblock boundaries to a TSV file, 2 columns: start end
-
-    arguments:
-    - haploblock_boundaries: list of tuples with haploblock boundaries (start, end)
-    '''
-    with open(os.path.join(out, f"haploblock_boundaries_chr{chr}.tsv"), 'w') as f:
-        # header
+def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]], chrom: str, out_dir: pathlib.Path) -> None:
+    """
+    Save haploblock boundaries to TSV file.
+    """
+    output_file = out_dir / f"haploblock_boundaries_chr{chrom}.tsv"
+    with output_file.open('w') as f:
         f.write("START\tEND\n")
-        for (start, end) in haploblock_boundaries:
-            f.write(str(start) + "\t" + str(end) + "\n")
+        # Using generator expression with writelines() for efficient I/O
+        f.writelines(f"{start}\t{end}\n" for start, end in haploblock_boundaries)
 
 
-def haploblock_hashes_to_TSV(haploblock2hash, chr, out):
-    '''
-    Save haploblock hashes to a TSV file, " columns: start end hash
-
-    arguments:
-    - haploblock2hash: dict, key=(start, end), value=haploblock hash
-    '''
-    with open(os.path.join(out, f"haploblock_hashes_chr{chr}.tsv"), 'w') as f:
-        # header
+def haploblock_hashes_to_tsv(haploblock2hash: dict[tuple[int, int], str], chrom: str, out_dir: pathlib.Path) -> None:
+    """
+    Save haploblock hashes to TSV file.
+    """
+    output_file = out_dir / f"haploblock_hashes_chr{chrom}.tsv"
+    with output_file.open('w') as f:
         f.write("START\tEND\tHASH\n")
-        for (start, end) in haploblock2hash:
-            f.write(str(start) + "\t" + str(end) +  "\t" + haploblock2hash[(start, end)] + "\n")
+        f.writelines(f"{start}\t{end}\t{hash_}\n" for (start, end), hash_ in haploblock2hash.items())
 
 
-def main(recombination_file, chr, out):
-
-    logger.info("Parsing recombination file")
-    haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chr)
+def main(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) -> None:
+    logger.info(f"Parsing recombination file: {recombination_file}")
+    haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
 
     logger.info("Generating haploblock hashes")
     haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
-    
-    logger.info("Saving haploblock boundaries")
-    haploblocks_to_TSV(haploblock_boundaries, chr, out)
 
-    logger.info("Saving haploblock hashes")
-    haploblock_hashes_to_TSV(haploblock2hash, chr, out)
+    logger.info("Saving haploblock boundaries and hashes")
+    haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
+    haploblock_hashes_to_tsv(haploblock2hash, chrom, out_dir)
 
 
 if __name__ == "__main__":
-    script_name = os.path.basename(sys.argv[0])
-    # configure logging, sub-modules will inherit this config
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.DEBUG)
-    # set up logger: we want script name rather than 'root'
-    logger = logging.getLogger(script_name)
+    script_name = pathlib.Path(sys.argv[0]).name
+
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.DEBUG,
+    )
 
     parser = argparse.ArgumentParser(
         prog=script_name,
-        description="TODO"
+        description="Generate haploblock boundaries and hashes from recombination data."
     )
-    
-    parser.add_argument('--recombination_file',
-                        help='Path to recombination file from Halldorsson et al., 2019',
-                        type=pathlib.Path,
-                        required=True)
-    parser.add_argument('--chr',
-                        help='chromosome',
-                        type=str,
-                        required=True)
-    parser.add_argument('--out',
-                        help='Path to output folder',
-                        type=pathlib.Path,
-                        required=True)
+    parser.add_argument('--recombination_file', type=pathlib.Path, required=True,
+                        help='Path to recombination file (Halldorsson et al., 2019)')
+    parser.add_argument('--chr', type=str, required=True, help='Chromosome name or number')
+    parser.add_argument('--out', type=pathlib.Path, required=True, help='Output folder path')
 
     args = parser.parse_args()
 
     try:
-        main(recombination_file=args.recombination_file,
-             chr=args.chr,
-             out=args.out)
-
+        main(args.recombination_file, args.chr, args.out)
     except Exception as e:
-        # details on the issue should be in the exception name, print it to stderr and die
-        sys.stderr.write("ERROR in " + script_name + " : " + repr(e) + "\n")
+        sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
+
