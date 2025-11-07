@@ -81,6 +81,17 @@ def compute_clusters(input_fasta, out, min_seq_id, cov_fraction, cov_mode,
 
 def main(boundaries_file, merged_consensus_dir, variant_counts_file, chr, out, cov_mode):
 
+    # sanity check
+    if not os.path.exists(boundaries_file):
+        logger.error(f"File {boundaries_file} does not exist.")
+        raise Exception("File does not exist")
+    if not os.path.exists(merged_consensus_dir):
+        logger.error(f"Directory {merged_consensus_dir} does not exist.")
+        raise Exception("Directory does not exist")
+    if not os.path.exists(variant_counts_file):
+        logger.error(f"File {variant_counts_file} does not exist.")
+        raise Exception("File does not exist")
+
     if os.path.exists(os.path.join(out, "clusters")):
         logger.error(f"Output directory {os.path.join(out)} exists, please remove it")
         raise Exception("Output directory exists")

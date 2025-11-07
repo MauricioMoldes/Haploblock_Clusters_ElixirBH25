@@ -83,10 +83,10 @@ cd ..
 python haploblocks.py \
     --recombination_file data/Halldorsson2019/aau1043_datas3 \
     --chr 6 \
-    --out data/
+    --out out_dir/
 ```
 
-This creates haploblock boundaries, a TSV file (with header) with 2 columns (START END), as well as haploblock hashes, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, ie integers with len(haploblock_boundaries) digits 1/0s.
+This creates haploblock boundaries, a TSV file (with header) with 2 columns (START END), as well as haploblock hashes, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, ie integers with len(haploblock_boundaries) digits 1/0s. All these are saved into `out_dir/`.
 
 
 #### 2. Generate haploblock phased fasta files (1000Genomes phased VCF -> Haploblock phased VCFs -> Phased fasta files) and individual hashes:
@@ -97,8 +97,8 @@ python haploblock_phased_sequences.py \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
     --chr 6 \
-    --variants data/variants_of_interest.txt \
-    --out data/
+    --variants out_dir/variants_of_interest.txt \
+    --out out_dir/
 ```
 *If you would like to run one haploblock as a test, please swap in data/haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
 
@@ -113,8 +113,8 @@ python haploblock_phased_sequences.py [...] --samples_file data/igsr-chb.tsv.tsv
 
 Then it generates consensus haploblock phased sequences for both haploids of each sample (e.g., `NA18531_chr6_region_711055-761032_hap1.fa`) by applying common variants (bcftools view `--min-af 0.05`) from previously generated VCF to reference sequence (--ref). They are saved in out/tmp/. We generate one merged phased fasta file per haploblock:
 ```
-./merge_fasta_per_region.sh data/tmp/consensus_fasta data/haploblock_phased_seq_merged
-Remove the data/tmp/ directory
+./merge_fasta_per_region.sh out_dir/tmp/consensus_fasta out_dir/haploblock_phased_seq_merged
+Remove the out_dir/tmp/ directory
 ```
 
 ## we will remove --samples_file later
@@ -130,6 +130,7 @@ python clusters.py \
     --chr 6 \
     --out data/
 ```
+*If you would like to run one haploblock as a test, please swap in data/haploblock_boundaries_chr6_TNFa.tsv for --boundaries_file*
 
 This uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs parameters: min sequence identify and coverage fraction. For each haploblock it generates a TSV file in directory data/clusters/.
 
