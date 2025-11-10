@@ -48,24 +48,22 @@ echo "Input:  $input_dir"
 echo "Output: $output_dir"
 echo
 
-# --- Merge loop --------------------------------------------------------
-fasta_files=$(find "$input_dir" -type f \( -name "*.fa" -o -name "*.fasta" \) | sort)
+# --- Merge loop (fast and safe) ---------------------------------------
+found_any=false
 
-if [ -z "$fasta_files" ]; then
-    echo "No FASTA files found in '$input_dir'." >&2
-    exit 1
-fi
+find "$input_dir" -type f \( -name "*.fa" -o -name "*.fasta" \) | sort | while IFS= read -r f; do
+    [ -e "$f" ] || continue
+    found_any=true
 
-for f in $fasta_files; do
-    name_noext=$(basename "$f" | sed 's/\.[^.]*$//')
+    # Remove extension (.fa or .fasta)
+    name_noext=$(basename "$f" | sed -E 's/\.(fa|fasta)$//')
 
-    # Extract region from filename (e.g., chr6_region_711055-761032)
+    # Extract region from filename
     region=$(echo "$name_noext" | grep -oE 'chr[0-9XYM]+_region_[0-9]+-[0-9]+' || true)
     [ -z "$region" ] && region="unknown_region"
-
     output="${output_dir}/${region}.fa"
 
-    # Extract header from filename (e.g., HG001_chr6_region_..._hap1)
+    # Extract header
     header=$(echo "$name_noext" | grep -oE '[^_]+_chr[0-9XYM]+_region_[0-9]+-[0-9]+_hap[0-9]+' || true)
     [ -z "$header" ] && header="$name_noext"
 
@@ -75,27 +73,12 @@ for f in $fasta_files; do
     } >> "$output"
 done
 
-# --- Optional parallel version (commented-out for perspective) ---------
-# find "$input_dir" -type f \( -name "*.fa" -o -name "*.fasta" \) | \
-#   parallel --will-cite -j 4 '
-#     f={};
-#     name_noext=$(basename "$f" | sed "s/\.[^.]*$//");
-#     region=$(echo "$name_noext" | grep -oE "chr[0-9XYM]+_region_[0-9]+-[0-9]+" || echo "unknown_region");
-#     output="${output_dir}/${region}.fa";
-#     header=$(echo "$name_noext" | grep -oE "[^_]+_chr[0-9XYM]+_region_[0-9]+-[0-9]+_hap[0-9]+" || echo "$name_noext");
-#     { echo ">$header"; grep -v "^>" "$f"; } >> "$output";
-#   '
-
-# --- Archive output (commented-out perspective) ------------------------
-# timestamp=$(date +"%Y%m%d_%H%M%S")
-# tar -czf "${output_dir}_${timestamp}.tar.gz" -C "$(dirname "$output_dir")" "$(basename "$output_dir")"
-# echo "Archive created: ${output_dir}_${timestamp}.tar.gz"
+if ! $found_any; then
+    echo "No FASTA files found in '$input_dir'." >&2
+    exit 1
+fi
 
 echo
 echo "Merge complete."
 echo "One FASTA per region written to: ${output_dir}/"
-
-# --- Optional cleanup of tmp directory (commented for safety) ----------
-# echo "Removing temporary directory: ${input_dir}"
-# rm -rf "$input_dir"
 
