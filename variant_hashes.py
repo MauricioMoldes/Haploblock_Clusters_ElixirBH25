@@ -31,34 +31,54 @@ def generate_cluster_hashes(clusters):
 
 def generate_individual_hashes(individual2cluster, cluster2hash, variant2hash, haploblock2hash, chr_hash):
     """
-    Generate a 64-character binary hash per individual.
+    Generate individual hashes, ie 64-character strings of 0/1s, each contains:
+        strand hash: 4 char
+        chromosome hash: 10 chars
+        haploblock hash: len(haploblocks) chars
+        cluster hash: len(clusters) chars
+        variant hash: len(variants of interest) chars
 
-    Hash structure:
-      - Strand hash: 4 bits
-      - Chromosome hash: 10 bits
-      - Haploblock hash: variable length
-      - Cluster hash: 20 bits
-      - Variant hash: variable length
+    arguments:
+    - individual2cluster: dict, key=individual, value=unique clusterID
+    - cluster2hash: dict, key=clusterID, value=hash
+    - variant2hash: dict, key=individual, key=hash
+    - haploblock2hash: dict, key=(start, end), key=hash
+    - chr_hash: 10-digit
+
+    returns:
+    - individual2hash: dict, key=individual, value=hash
     """
     individual2hash = {}
 
-    for individual, cluster in individual2cluster.items():
-        # Strand hash
+    # Normalize haploblock2hash keys to string tuples for safety
+    haploblock2hash = { (str(s), str(e)): h for (s, e), h in haploblock2hash.items() }
+
+    for individual in individual2cluster:
+        # strand hash
+        # individual is in format: NA18524_chr6_region_31480875-31598421_hap0
         strand = individual[-1]
         strand_hash = "0001" if strand == "0" else "0010"
 
-        # Haploblock hash
-        parts = individual.split("_")
-        start, end = parts[3].split("-")
+        # Extract start-end from individual name robustly
+        individual_split = individual.split("_")
+        region_str = individual_split[3]  # e.g., "31480875-31598421" or "31480875-31598421.vcf"
+        # Remove possible file extensions
+        region_str = region_str.replace(".fa","").replace(".fasta","").replace(".vcf","")
+        start, end = region_str.split("-")
+
+        # haploblock hash
         haploblock_hash = haploblock2hash[(start, end)]
 
-        # Cluster and variant hashes
+        # cluster hash
+        cluster = individual2cluster[individual]
         cluster_hash = cluster2hash[cluster]
+
+        # variant hash
         variant_hash = variant2hash[individual]
 
-        # Full individual hash
-        full_hash = strand_hash + chr_hash + haploblock_hash + cluster_hash + variant_hash
-        individual2hash[individual] = full_hash
+        # individual hash
+        hash_str = strand_hash + chr_hash + haploblock_hash + cluster_hash + variant_hash
+        individual2hash[individual] = hash_str
 
     return individual2hash
 

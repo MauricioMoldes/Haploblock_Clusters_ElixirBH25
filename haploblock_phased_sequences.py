@@ -49,8 +49,13 @@ def generate_consensus_fasta(ref_fasta: pathlib.Path, vcf: pathlib.Path, out_dir
     tmp_dir = out_dir / "tmp" / "consensus_fasta"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    output_hap0 = tmp_dir / f"{vcf.stem}_hap0.fa"
-    output_hap1 = tmp_dir / f"{vcf.stem}_hap1.fa"
+    # Strip .vcf if present
+    vcf_name = vcf.stem
+    if vcf_name.endswith(".vcf"):
+        vcf_name = vcf_name[:-4]
+
+    output_hap0 = tmp_dir / f"{vcf_name}_hap0.fa"
+    output_hap1 = tmp_dir / f"{vcf_name}_hap1.fa"
 
     for hap, outfile in [(1, output_hap0), (2, output_hap1)]:
         with outfile.open("w") as f_out:

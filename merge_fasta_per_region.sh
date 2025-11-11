@@ -53,8 +53,8 @@ while IFS= read -r f; do
     [ -e "$f" ] || continue
     found_any=true
 
-    # Remove extension (.fa, .fasta)
-    name_noext=$(basename "$f" | sed -E 's/\.(fa|fasta)$//')
+    # Remove extensions (.vcf, .fa, .fasta)
+    name_noext=$(basename "$f" | sed -E 's/(\.vcf)?\.(fa|fasta)$//')
 
     # Extract region from filename
     region=$(echo "$name_noext" | grep -oE 'chr[0-9XYM]+_region_[0-9]+-[0-9]+' || true)
