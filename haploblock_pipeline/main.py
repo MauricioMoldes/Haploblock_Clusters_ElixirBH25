@@ -5,14 +5,14 @@ import sys
 import yaml
 from pathlib import Path
 
-from haploblocks_pipeline import (
+from haploblock_pipeline import (
     step1_haploblocks,
     step2_phased_sequences,
     step3_merge_fasta,
     step4_clusters,
     step5_variant_hashes,
 )
-from haploblocks_pipeline.utils.logging import setup_logger
+from haploblock_pipeline.utils.logging import setup_logger
 
 
 def load_config(config_path):
@@ -61,8 +61,11 @@ def main():
 
         # Step 2
         if step in ["2", "all"]:
+            samples_file = cfg["data"].get("samples_file")  # <-- optional, can be None
+            samples_file_path = Path(samples_file) if samples_file else None
             step2_phased_sequences.run(
                 boundaries_file=cfg["data"]["boundaries_file"],
+                samples_file=samples_file_path,  # <-- pass None if not provided
                 vcf=cfg["data"]["vcf"],
                 ref=cfg["data"]["ref"],
                 chr_map=cfg["data"]["chr_map"],

@@ -17,6 +17,7 @@ data:
   ref: data/chr6.fa.gz
   chr_map: data/chr_map
   variants: data/variants_of_interest.txt
+  samples_file: null   # <-- optional, can be omitted or set to null
 
 outputs:
   out_dir: out_dir/

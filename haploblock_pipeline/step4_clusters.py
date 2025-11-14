@@ -2,7 +2,6 @@
 import os
 import sys
 import logging
-import argparse
 import pathlib
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import data_parser
 
 logger = logging.getLogger(__name__)
+
 
 # ----------------------------------------------------------------------
 # Utility Functions
@@ -64,7 +64,8 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction
 # ----------------------------------------------------------------------
 
 def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Path,
-         variant_counts_file: pathlib.Path, chrom: str, out_dir: pathlib.Path, cov_mode: int, threads: int = None):
+                 variant_counts_file: pathlib.Path, chrom: str, out_dir: pathlib.Path,
+                 cov_mode: int = 0, threads: int = None):
 
     for fpath in [boundaries_file, merged_consensus_dir, variant_counts_file]:
         if not fpath.exists():
@@ -96,7 +97,10 @@ def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Pa
     futures = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for (start, end) in haploblock_boundaries:
-            input_fasta = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
+            chrom_str = str(chrom)
+            start_str, end_str = str(start), str(end)
+            input_fasta = merged_consensus_dir / f"chr{chrom_str}_region_{start_str}-{end_str}.fa"
+            logger.info("Looking for FASTA: %s", input_fasta.resolve())
             if not input_fasta.exists():
                 logger.warning("Skipping missing FASTA file: %s", input_fasta)
                 continue
@@ -120,7 +124,7 @@ def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Pa
 
 
 # ----------------------------------------------------------------------
-# CUDA perspective
+# CUDA Perspective (Commented)
 # ----------------------------------------------------------------------
 # 💡 The current MMseqs2 command-line tool does not natively use CUDA.
 #     For very large haploblocks, one could consider:
@@ -130,7 +134,27 @@ def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Pa
 #     These would require rewriting `compute_clusters` or replacing MMseqs2 backend.
 
 # ----------------------------------------------------------------------
-# Entry Point
+# Pipeline wrapper for main.py
+# ----------------------------------------------------------------------
+
+def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=0, threads=None):
+    """
+    Pipeline-compatible run function.
+    Matches argument names used in main.py.
+    """
+    run_clusters(
+        pathlib.Path(boundaries_file),
+        pathlib.Path(merged_consensus_dir),
+        pathlib.Path(variant_counts),
+        str(chr),
+        pathlib.Path(out),
+        cov_mode=cov_mode,
+        threads=threads
+    )
+
+
+# ----------------------------------------------------------------------
+# CLI for standalone execution
 # ----------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -143,37 +167,30 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(script_name)
 
+    import argparse
     parser = argparse.ArgumentParser(
         prog=script_name,
         description="Cluster haploblock consensus sequences using MMseqs2"
     )
 
-    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True,
-                        help="Path to haploblock boundaries file")
-    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True,
-                        help="Directory with consensus FASTA files per haploblock")
-    parser.add_argument("--variant_counts", type=pathlib.Path, required=True,
-                        help="File with mean and stdev variant counts per haploblock")
-    parser.add_argument("--chr", type=str, required=True, help="Chromosome ID")
-    parser.add_argument("--out", type=pathlib.Path, required=True, help="Output directory for clusters")
-    parser.add_argument("--cov_mode", type=int, default=0, help="Coverage mode for MMSeqs2")
-    parser.add_argument(
-    "--threads",
-    type=int,
-    default=None,
-    help="Number of worker threads for per-haploblock clustering (default: auto-detect CPU cores)"
-    )
+    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True)
+    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True)
+    parser.add_argument("--variant_counts", type=pathlib.Path, required=True)
+    parser.add_argument("--chr", type=str, required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--cov_mode", type=int, default=0)
+    parser.add_argument("--threads", type=int, default=None)
 
     args = parser.parse_args()
 
     try:
-        run_clusters(
+        run(
             boundaries_file=args.boundaries_file,
             merged_consensus_dir=args.merged_consensus_dir,
-            variant_counts_file=args.variant_counts,
-            chrom=args.chr,
-            out_dir=args.out,
-            cov_mode=args.cov_mode
+            variant_counts=args.variant_counts,
+            chr=args.chr,
+            out=args.out,
+            cov_mode=args.cov_mode,
             threads=args.threads
         )
     except Exception as e:

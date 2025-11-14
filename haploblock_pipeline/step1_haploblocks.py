@@ -141,3 +141,16 @@ if __name__ == "__main__":
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
+
+# Alias for pipeline
+def run(recombination_file, chr, out, threads=None):
+    """
+    Pipeline-compatible run function.
+
+    Arguments:
+        recombination_file: Path to recombination file
+        chr: Chromosome number
+        out: Output directory
+        threads: Optional, not used in this step (kept for consistency)
+    """
+    run_haploblocks(pathlib.Path(recombination_file), str(chr), pathlib.Path(out))

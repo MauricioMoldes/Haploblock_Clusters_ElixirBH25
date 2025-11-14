@@ -153,3 +153,13 @@ if __name__ == "__main__":
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
+def run(clusters, variant_hashes, haploblock_hashes, chr, out, threads=None):
+    run_variant_hashes(
+        pathlib.Path(clusters),
+        pathlib.Path(variant_hashes),
+        pathlib.Path(haploblock_hashes),
+        str(chr),
+        pathlib.Path(out),
+        threads
+    )
+
