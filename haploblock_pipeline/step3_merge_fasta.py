@@ -4,7 +4,7 @@ import sys
 import logging
 import pathlib
 import subprocess
-from haploblocks_pipeline.utils.logging import setup_logger
+from haploblock_pipeline.utils.logging import setup_logger
 
 logger = setup_logger()
 
