@@ -178,7 +178,7 @@ This uses previously generated haploblock phased sequences (--merged_consensus_d
 
 ### 3a. If you are not interested in SNPs, and only background haploblock clusters, you can stop here.
 
-#### 3a1. If you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file.
+#### 3a1. If you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file (see step 2).
 
 ### 4. Generate variant hashes
 
