@@ -77,7 +77,7 @@ def hashes_to_TSV(individual2hash, out):
     logger.info(f"Individual hashes written to {output_path}")
 
 
-def main(clusters_file, variant_hashes, haploblock_hashes, chr, out):
+def run_variant_hashes(clusters_file, variant_hashes, haploblock_hashes, chr, out, threads: int = None):
     logger.info("Parsing clusters")
     individual2cluster, clusters = data_parser.parse_clusters(clusters_file)
     logger.info(f"Found {len(clusters)} clusters with {len(individual2cluster)} individuals")
@@ -91,8 +91,9 @@ def main(clusters_file, variant_hashes, haploblock_hashes, chr, out):
     logger.info("Generating individual hashes (parallelized)")
     chr_hash = np.binary_repr(int(chr))
     cluster2hash = generate_cluster_hashes(clusters)
+    max_workers = threads or (os.cpu_count() - 1 or 1)
     individual2hash = generate_individual_hashes_parallel(
-        individual2cluster, cluster2hash, variant2hash, haploblock2hash, chr_hash
+        individual2cluster, cluster2hash, variant2hash, haploblock2hash, chr_hash, max_workers=max_workers
     )
 
     logger.info("Saving individual hashes")
@@ -130,18 +131,35 @@ if __name__ == "__main__":
     parser.add_argument('--chr', required=True, type=str, help='Chromosome number')
     parser.add_argument('--out', required=True, type=pathlib.Path,
                         help='Output folder path')
+    parser.add_argument(
+    "--threads",
+    type=int,
+    default=None,
+    help="Number of worker threads for generating individual hashes (default: auto-detect CPU cores)"
+    )
 
     args = parser.parse_args()
 
     try:
-        main(
+        run_variant_hashes(
             clusters_file=args.clusters,
             variant_hashes=args.variant_hashes,
             haploblock_hashes=args.haploblock_hashes,
             chr=args.chr,
             out=args.out,
+            threads=args.threads
         )
     except Exception as e:
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
+
+def run(clusters, variant_hashes, haploblock_hashes, chr, out, threads=None):
+    run_variant_hashes(
+        pathlib.Path(clusters),
+        pathlib.Path(variant_hashes),
+        pathlib.Path(haploblock_hashes),
+        str(chr),
+        pathlib.Path(out),
+        threads
+    )
 

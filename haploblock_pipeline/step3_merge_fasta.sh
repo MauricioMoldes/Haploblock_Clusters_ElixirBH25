@@ -4,14 +4,21 @@ set -euo pipefail
 input_dir="$1"
 output_dir="$2"
 clean_flag="${3:-}"
+threads="${4:-}"      # optional number of threads
+
 
 [ ! -d "$input_dir" ] && { echo "Input dir not found"; exit 1; }
 
 [ -d "$output_dir" ] && [ "$clean_flag" = "--clean" ] && rm -rf "$output_dir"
 mkdir -p "$output_dir"
 
-jobs=$(( $(nproc) - 1 ))
-jobs=$(( jobs > 0 ? jobs : 1 ))
+# Determine number of parallel jobs
+if [[ -z "$threads" || "$threads" -le 0 ]]; then
+    jobs=$(( $(nproc) - 1 ))
+    jobs=$(( jobs > 0 ? jobs : 1 ))
+else
+    jobs="$threads"
+fi
 
 echo "Starting FASTA merge with $jobs jobs..."
 
@@ -58,3 +65,10 @@ rm "$tmp_file"
 
 echo "Merge complete."
 
+##########################
+## Permissions 
+##########################
+
+sleep 200
+
+chmod 644 "$output_dir"/*.fa

@@ -64,8 +64,12 @@ def haploblock_hashes_to_tsv(haploblock2hash: dict[tuple[int, int], str], chrom:
         f.write("START\tEND\tHASH\n")
         f.writelines(f"{start}\t{end}\t{hash_}\n" for (start, end), hash_ in haploblock2hash.items())
 
+def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) -> None:
+    """
+    Modular function to generate haploblock boundaries and hashes.
 
-def main(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) -> None:
+    Can be imported and called from another script/pipeline.
+    """
     logger.info(f"Parsing recombination file: {recombination_file}")
     haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
 
@@ -108,6 +112,9 @@ def main(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) ->
 # -------------------------------------------------------------------------
 
 
+# -------------------------------------------------------------------------
+# CLI wrapper for standalone execution
+# -------------------------------------------------------------------------
 if __name__ == "__main__":
     script_name = pathlib.Path(sys.argv[0]).name
 
@@ -129,8 +136,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        main(args.recombination_file, args.chr, args.out)
+        run_haploblocks(args.recombination_file, args.chr, args.out)
     except Exception as e:
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
+
+# Alias for pipeline
+def run(recombination_file, chr, out, threads=None):
+    """
+    Pipeline-compatible run function.
+
+    Arguments:
+        recombination_file: Path to recombination file
+        chr: Chromosome number
+        out: Output directory
+        threads: Optional, not used in this step (kept for consistency)
+    """
+    run_haploblocks(pathlib.Path(recombination_file), str(chr), pathlib.Path(out))

@@ -59,6 +59,7 @@ RUN wget https://mmseqs.com/latest/mmseqs-linux-avx2.tar.gz -O /opt/mmseqs-linux
 WORKDIR /app
 RUN git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_ElixirBH25.git
 
+
 # Set repo directory as working directory
 WORKDIR /app/Haploblock_Clusters_ElixirBH25
 
