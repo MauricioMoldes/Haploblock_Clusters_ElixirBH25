@@ -65,8 +65,8 @@ RUN git clone https://github.com/MauricioMoldes/Haploblock_Clusters_ElixirBH25.g
 WORKDIR /app/Haploblock_Clusters_ElixirBH25
 
 # Copy requirements.txt and install Python dependencies
-#COPY requirements.txt .
-#RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # -------------------------------------------------------------------
 # Download data (optional layer)
