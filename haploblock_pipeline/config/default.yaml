@@ -7,8 +7,8 @@
 # ============================================================
 
 pipeline:
-  step: all
-  threads: auto
+  step: all          # Options: 1, 2, 3, 4, 5, or "all"
+  threads: auto      # Number of threads (auto = use CPU count - 1)
 
 data:
   recombination_file: data/Halldorsson2019/aau1043_datas3
@@ -17,20 +17,27 @@ data:
   ref: data/chr6.fa.gz
   chr_map: data/chr_map
   variants: data/variants_of_interest.txt
-  samples_file: null
+  samples_file: null   # optional
 
 outputs:
-  out_dir: out_dir/
+  # Base output directory for all steps
+  out_dir: out_dir/TNFa/
 
+  # Step 2
   step2_out: out_dir/TNFa
+
+  # Step 3
   step3_input: out_dir/TNFa/tmp/consensus_fasta
   step3_output: out_dir/TNFa/haploblock_phased_seq_merged
 
+  # Step 4
   merged_consensus_dir: out_dir/TNFa/haploblock_phased_seq_merged
   variant_counts: out_dir/TNFa/variant_counts.tsv
   clusters: out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv
+
+  # Step 5
   variant_hashes: out_dir/TNFa/variant_hashes.tsv
-  haploblock_hashes: out_dir/haploblock_hashes_chr6.tsv
+  haploblock_hashes: out_dir/TNFa/haploblock_hashes_chr6.tsv
 
 chromosome:
   number: 6

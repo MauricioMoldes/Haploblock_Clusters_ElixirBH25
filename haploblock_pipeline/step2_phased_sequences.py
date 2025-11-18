@@ -8,7 +8,7 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 from typing import Tuple, List, Dict, Optional
 
-from haploblock_pipeline import data_parser
+import data_parser
 
 logger = logging.getLogger(__name__)
 
