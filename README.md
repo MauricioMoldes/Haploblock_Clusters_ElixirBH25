@@ -12,16 +12,14 @@ git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_Eli
 cd Haploblock_Clusters_ElixirBH25/
 ```
 
-# Run the pipeline
+## Run the pipeline
 
 To create genomic hashes you can run the pipeline step-by-step or use a Docker container, as described below:
 
 
-## Use Docker
+### Use Docker
 
-All necessary data will be downloaded into `data/`.
-
-Build the Docker image:
+Build the Docker image (all necessary data will be downloaded into `data/` inside the container):
 ```
 docker build -t haploblock-pipeline .
 ```
@@ -57,10 +55,9 @@ docker run --rm \
 ```
 
 
-# Run the pipeline step-by-step
+## Run the pipeline step-by-step
 
-
-## Data
+### Data
 
 All data listed below must be downloaded into `data/`:
 
