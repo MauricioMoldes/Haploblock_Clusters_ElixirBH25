@@ -79,7 +79,7 @@ RUN mkdir -p /app/Haploblock_Clusters_ElixirBH25/data && \
     wget -q https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr6.fa.gz && \
     gzip -d chr6.fa.gz && \
     bgzip chr6.fa && \
-    gzip -d Halldorsson2019/aau1043_datas3.gz \
+    gzip -d Halldorsson2019/aau1043_datas3.gz && \
     echo "All data successfully downloaded into /data."
 
 # Default command
