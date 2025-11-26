@@ -19,7 +19,7 @@ To create genomic hashes you can run the pipeline step-by-step or use a Docker c
 
 ## Use Docker
 
-All necessary will be downloaded into `data/`.
+All necessary data will be downloaded into `data/`.
 
 Build the Docker image:
 ```
@@ -57,10 +57,10 @@ docker run --rm \
 ```
 
 
-## Run the pipeline step-by-step
+# Run the pipeline step-by-step
 
 
-# Data
+## Data
 
 All data listed below must be downloaded into `data/`:
 
