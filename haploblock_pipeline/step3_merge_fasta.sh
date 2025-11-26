@@ -58,17 +58,15 @@ cut -d' ' -f1 "$tmp_file" | sort -u | while read -r region; do
     merge_region "$region" "$output_dir" "${files[@]}" &
     # Control max parallel jobs
     while (( $(jobs -r | wc -l) >= jobs )); do sleep 0.1; done
+    wait
 done
 
-wait
 rm "$tmp_file"
 
-echo "Merge complete."
+echo "Merge complete!"
 
 ##########################
 ## Permissions 
 ##########################
-
-sleep 200
 
 chmod 644 "$output_dir"/*.fa
