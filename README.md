@@ -242,11 +242,15 @@ A simple model to relate the phenotype $y_i$ with our haploblock-specific hashes
 $y_i = \beta_0 + \sum_{h=1}^{H}{\alpha_{ih} (x^T_{ih}U_h)}$
 
 where-
-$x_{ih} \in \mathbb{R}^d$ be the binary vector for haploblock $h$ and individual $i$
-$y_i$ be the phenotype for individual $i$
 
-$U_h \in \mathbb{R}^{d}$ be the projection vector for each haploblock $h$ across individuals
+$x_{ih} \in \mathbb{R}^d$ is the binary vector for haploblock $h$ and individual $i$
+
+$y_i$ is the phenotype for individual $i$
+
+$U_h \in \mathbb{R}^{d}$ is the projection vector for each haploblock $h$ across individuals
+
 $\alpha_{ih}$ is a haploblock-specific weight for each individual
+
 and $\beta_0$ is the zero-intercept
 
 The parameters $\beta_0, \alpha_{ih},$ and the haploblock-specific projection vectors $U_h$ can be learned using a gradient descent optimisation algorithm with mean squared error loss. We can initialize $\alpha_{ih}$ using summary statistics over p-values derived from SNP-specific GWAS studies.
