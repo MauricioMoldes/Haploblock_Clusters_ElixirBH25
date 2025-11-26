@@ -12,6 +12,53 @@ git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_Eli
 cd Haploblock_Clusters_ElixirBH25/
 ```
 
+# Run the pipeline
+
+To create genomic hashes you can run the pipeline step-by-step or use a Docker container, as described below:
+
+
+## Use Docker
+
+All necessary will be downloaded into `data/`.
+
+Build the Docker image:
+```
+docker build -t haploblock-pipeline .
+```
+
+Run the Docker container interactively:
+```
+docker run -it --rm \
+    -v data:/app/Haploblock_Clusters_ElixirBH25/data \
+    haploblock-pipeline
+```
+
+Once inside the container, the pipeline can be run with:
+```
+cd haploblock_pipeline
+python3 main.py --config config/default.yaml [optional arguments]
+```
+
+The default configuration file example is provided in [config/default.yaml](haploblock_pipeline/config/default.yaml). This configuration file defines all input paths, chromosome settings, and parallelization parameters.
+
+Optional pipeline arguments:
+```
+--threads <N> : Number of threads to use (default: the number of available CPUs minus 1)
+--step <1|2|3|4|5> : Execute only a specific pipeline step (default: all steps)
+```
+
+Note: The pipeline can be also run inside a Docker container in the non-interactive mode with:
+```
+docker run --rm \
+    -v host_mount_point/data:/app/Haploblock_Clusters_ElixirBH25/data \
+    -v host_mount_point/config/default.yaml:/app/Haploblock_Clusters_ElixirBH25/config/default.yaml \
+    haploblock-pipeline \
+    python3 main.py --config config/default.yaml
+```
+
+
+## Run the pipeline step-by-step
+
 
 # Data
 
@@ -51,52 +98,6 @@ bgzip chr6.fa
 ```
 
 Optionally for testing, if you want to run the pipeline for one population from 1000Genomes, you will also need a TSV file with the list of samples in data/, eg. CHB with 113 samples downloaded from: https://www.internationalgenome.org/data-portal/population/CHB
-
-
-# Run the pipeline
-
-To create genomic hashes you can run the pipeline step-by-step or use a Docker container, as described below:
-
-
-## Use Docker
-
-Build the Docker image:
-```
-docker build -t haploblock-pipeline .
-```
-
-Run the Docker container interactively:
-```
-docker run -it --rm \
-    -v data:/app/Haploblock_Clusters_ElixirBH25/data \
-    haploblock-pipeline
-```
-
-Once inside the container, the pipeline can be run with:
-```
-cd haploblock_pipeline
-python3 main.py --config config/default.yaml [optional arguments]
-```
-
-The default configuration file example is provided in [config/default.yaml](haploblock_pipeline/config/default.yaml). This configuration file defines all input paths, chromosome settings, and parallelization parameters.
-
-Optional pipeline arguments:
-```
---threads <N> : Number of threads to use (default: the number of available CPUs minus 1)
---step <1|2|3|4|5> : Execute only a specific pipeline step (default: all steps)
-```
-
-Note: The pipeline can be also run inside a Docker container in the non-interactive mode with:
-```
-docker run --rm \
-    -v host_mount_point/data:/app/Haploblock_Clusters_ElixirBH25/data \
-    -v host_mount_point/config/default.yaml:/app/Haploblock_Clusters_ElixirBH25/config/default.yaml \
-    haploblock-pipeline \
-    python3 main.py --config config/default.yaml
-```
-
-
-## Run the pipeline step-by-step
 
 
 ### Configure Python environment and install dependencies
