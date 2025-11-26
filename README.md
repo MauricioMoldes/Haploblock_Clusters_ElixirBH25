@@ -100,7 +100,7 @@ docker run --rm \
 
 ### Configure Python environment and install dependencies
 
-For the list of required dependencies and how to install them, please go to [requirements.md](requirements.md) and follow the instructions *carefully*.
+For the list of required dependencies and how to install them, please go to [requirements.txt](requirements.txt) and follow the instructions *carefully*.
 
 The pipeline requires two Python libraries (numpy, pyyaml), as well as samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin` or exported to PATH.
 
