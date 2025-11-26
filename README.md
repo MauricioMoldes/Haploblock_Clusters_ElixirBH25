@@ -68,12 +68,13 @@ docker build -t haploblock-pipeline .
 Run the Docker container interactively:
 ```
 docker run -it --rm \
-    -v host_mount_point/data:/app/Haploblock_Clusters_ElixirBH25/data \
+    -v data:/app/Haploblock_Clusters_ElixirBH25/data \
     haploblock-pipeline
 ```
 
 Once inside the container, the pipeline can be run with:
 ```
+cd haploblock_pipeline
 python3 main.py --config config/default.yaml [optional arguments]
 ```
 
@@ -100,7 +101,7 @@ docker run --rm \
 
 ### Configure Python environment and install dependencies
 
-For the list of required dependencies and how to install them, please go to [requirements.txt](requirements.txt) and follow the instructions *carefully*.
+For the list of required dependencies and how to install them, please go to [install_dependencies.md](install_dependencies.md) and follow the instructions *carefully*.
 
 The pipeline requires two Python libraries (numpy, pyyaml), as well as samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin` or exported to PATH.
 
