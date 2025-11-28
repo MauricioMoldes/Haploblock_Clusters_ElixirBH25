@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def parse_recombination_rates(recombination_file, chromosome):
     """
-    Parses recombination rates from Halldorsson et al., 2019
+    Parses recombination map from Halldorsson et al., 2019
 
     arguments:
     - recombination_file with 7-line header
@@ -80,7 +80,7 @@ def parse_recombination_rates(recombination_file, chromosome):
 
 def parse_haploblock_boundaries(boundaries_file):
     """
-    Parses haploblock boundaries with 2 columns: start end
+    Parses haploblock boundaries with header and 2 columns: start end
 
     arguments:
     - boundaries_file
@@ -223,7 +223,9 @@ def parse_variants_of_interest(variants_file):
 
 def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
     """
-    Extract a specific region from a VCF file
+    Extract variants from a specific region from a VCF file,
+    if VCF has 6 instead of chr6, which will be required by bcftools consensus
+    create file chr_map: "6 chr6" one mapping per line and provide it with --chr_map
 
     Generates the following files in out/tmp/:
     - {chr}_region_{start}-{end}.vcf.gz
@@ -233,7 +235,7 @@ def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
     - chr{chr}_region_{start}-{end}.vcf.gz.csi
 
     returns:
-    - output_vcf: pathlib.Path to bgzipped vcf
+    - output_vcf: pathlib.Path to bgzipped vcf for region
     """
     if chr.startswith("chr"):
         chr = chr.replace("chr", "")
@@ -252,9 +254,7 @@ def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
                     temporary_vcf],
                     check=True)
     
-    # VCF has 6 instead of chr6, which is required by bcftools consensus
-    # create file chr_map: "6 chr6" one mapping per line
-    # map chr6 to 6, bgzip and index
+    # map chr6 to 6 in VCF, bgzip and index
     output_vcf = os.path.join(out, "tmp", f"chr{chr}_region_{start}-{end}.vcf")
     output_index = os.path.join(out, "tmp", f"chr{chr}_region_{start}-{end}.vcf.gz.csi")
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import os
 import logging
 import argparse
 import pathlib
@@ -66,11 +67,13 @@ def generate_consensus_fasta(ref_fasta: pathlib.Path,
     output_hap0 = tmp_dir / f"{vcf_name}_hap0.fa"
     output_hap1 = tmp_dir / f"{vcf_name}_hap1.fa"
 
+    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # file for BCFtools log
+
     for hap, outfile in [(1, output_hap0), (2, output_hap1)]:
-        with outfile.open("w") as f_out:
-            subprocess.run(
+        subprocess.run(
                 ["bcftools", "consensus", "-H", str(hap), "-f", str(ref_fasta), str(vcf)],
-                stdout=f_out,
+                stdout=outfile.open("w"),
+                stderr=open(bcftools_log_file, "a+"),
                 check=True,
             )
 
@@ -159,19 +162,72 @@ def write_tsv_variant_counts(haploblock2count: Dict[tuple, Tuple[float, float]],
 # Worker function for Pool
 # -------------------------------------------------------------------------
 def _process_sample_for_region(args):
-    """Worker: extract sample, count variants, generate FASTAs."""
+    """Worker: extract sample, normalize, filter and count variants, generate FASTAs."""
     if args is None:
         return None  # skip empty worker
 
-    sample, region_vcf, region_fasta, out_dir = args
+    sample, region_vcf, region_fasta, ref, out_dir = args
     try:
         sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out_dir)
+
+        normalized_vcf = normalize_vcf(sample_vcf, ref, out_dir)
+
+        filtered_normalized_vcf = filter_vcf(normalized_vcf, out_dir)
+
         c0, c1 = count_variants(sample_vcf)
-        generate_consensus_fasta(region_fasta, sample_vcf, out_dir)
+        generate_consensus_fasta(region_fasta, filtered_normalized_vcf, out_dir)
         return sample, c0, c1
     except Exception as e:
         logger.exception("Error processing sample %s: %s", sample, e)
         return sample, 0, 0
+
+
+def normalize_vcf(vcf, ref, out_dir):
+    """
+    Normalize indels
+    """
+    vcf_name = vcf.stem
+    if vcf_name.endswith(".vcf"):
+        vcf_name = vcf_name[:-4]
+
+    normalized_vcf = os.path.join(out_dir, "tmp", f"{vcf_name}.norm.vcf.gz")
+    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # file for BCFtools log
+
+    subprocess.run(["bcftools", "norm", "-f", str(ref), str(vcf), "-Ob", "-o", normalized_vcf],
+                    stdout=subprocess.PIPE,
+                    stderr=open(bcftools_log_file, "a+"),
+                    text=True,
+                    check=True)
+    
+    subprocess.run(["bcftools", "index",
+                    normalized_vcf],
+                    check=True)
+    
+    return(pathlib.Path(normalized_vcf))
+
+
+def filter_vcf(vcf, out_dir):
+    """
+    Normalize indels
+    """
+    vcf_name = vcf.stem
+    if vcf_name.endswith(".vcf"):
+        vcf_name = vcf_name[:-4]
+
+    filtered_vcf = os.path.join(out_dir, "tmp", f"{vcf_name}.flt.vcf.gz")
+    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # write BCFtools logs to file
+    
+    subprocess.run(["bcftools", "filter", "--IndelGap", "5", "-e", "'QUAL<40'", str(vcf), "-Ob", "-o", filtered_vcf],
+                    stdout=subprocess.PIPE,
+                    stderr=open(bcftools_log_file, "a+"),
+                    text=True,
+                    check=True)
+    
+    subprocess.run(["bcftools", "index",
+                    filtered_vcf],
+                    check=True)
+
+    return(pathlib.Path(filtered_vcf))
 
 
 # -------------------------------------------------------------------------
@@ -225,7 +281,7 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
         region_vcf = data_parser.extract_region_from_vcf(vcf, chrom, chr_map, start, end, out_dir)
         region_fasta = data_parser.extract_region_from_fasta(ref, chrom, start, end, out_dir)
 
-        work = [(s, region_vcf, region_fasta, out_dir) for s in samples]
+        work = [(s, region_vcf, region_fasta, ref, out_dir) for s in samples]
 
         if workers == 1:
             results = [_process_sample_for_region(w) for w in work]
