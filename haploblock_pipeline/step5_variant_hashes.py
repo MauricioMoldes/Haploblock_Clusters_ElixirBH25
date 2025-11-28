@@ -6,12 +6,53 @@ import argparse
 import pathlib
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import Pool, cpu_count
 
 import data_parser
 
 logger = logging.getLogger(__name__)
 
 CLUSTER_HASH_LENGTH = 20
+
+HAPLOBLOCK_HASH_LENGTH = 20
+#PARALLEL_THRESHOLD = 1_000_000  # Enable multiprocessing if > 1M haploblocks
+PARALLEL_THRESHOLD = 1000  # DEV only option Trigger parallelization when >1000 haploblock
+
+
+def _make_hash(i: int) -> str:
+    """Helper function for multiprocessing."""
+    return np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH)
+
+
+def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int, int]]) -> dict[tuple[int, int], str]:
+    """
+    Generate unique binary hashes for each haploblock boundary.
+
+    Uses multiprocessing for large datasets to speed up hash generation.
+
+    Args:
+        haploblock_boundaries: List of (start, end) tuples.
+
+    Returns:
+        Dict mapping (start, end) -> binary hash string.
+    """
+    n_blocks = len(haploblock_boundaries)
+    logger.info(f"Generating hashes for {n_blocks:,} haploblocks")
+
+    if n_blocks == 0:
+        logger.warning("No haploblocks provided.")
+        return {}
+
+    # Decide execution strategy
+    if n_blocks > PARALLEL_THRESHOLD:
+        logger.info(f"Large dataset detected (> {PARALLEL_THRESHOLD:,} blocks). Using parallel generation.")
+        with Pool(cpu_count()) as pool:
+            hashes = pool.map(_make_hash, range(n_blocks))
+    else:
+        # Vectorized version for smaller datasets
+        hashes = [np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH) for i in range(n_blocks)]
+
+    return dict(zip(haploblock_boundaries, hashes))
 
 
 def generate_cluster_hashes(clusters):
@@ -68,6 +109,14 @@ def generate_individual_hashes_parallel(individual2cluster, cluster2hash, varian
     return individual2hash
 
 
+def haploblock_hashes_to_tsv(haploblock2hash: dict[tuple[int, int], str], chrom: str, out_dir: pathlib.Path) -> None:
+    """Save haploblock hashes to TSV file."""
+    output_file = out_dir / f"haploblock_hashes_chr{chrom}.tsv"
+    with output_file.open('w') as f:
+        f.write("START\tEND\tHASH\n")
+        f.writelines(f"{start}\t{end}\t{hash_}\n" for (start, end), hash_ in haploblock2hash.items())
+
+
 def hashes_to_TSV(individual2hash, out):
     output_path = os.path.join(out, "individual_hashes.tsv")
     with open(output_path, 'w') as f:
@@ -77,16 +126,18 @@ def hashes_to_TSV(individual2hash, out):
     logger.info(f"Individual hashes written to {output_path}")
 
 
-def run_variant_hashes(clusters_file, variant_hashes, haploblock_hashes, chr, out, threads: int = None):
+def run_variant_hashes(boundaries_file, chrom: str, clusters_file, variant_hashes, chr, out, threads: int = None):
+    logger.info("Generating haploblock hashes")
+    haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
+    haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
+    haploblock_hashes_to_tsv(haploblock2hash, chrom, out)
+
     logger.info("Parsing clusters")
     individual2cluster, clusters = data_parser.parse_clusters(clusters_file)
     logger.info(f"Found {len(clusters)} clusters with {len(individual2cluster)} individuals")
 
     logger.info("Parsing variant hashes")
     variant2hash = data_parser.parse_variant_hashes(variant_hashes)
-
-    logger.info("Parsing haploblock hashes")
-    haploblock2hash = data_parser.parse_haploblock_hashes(haploblock_hashes)
 
     logger.info("Generating individual hashes (parallelized)")
     chr_hash = np.binary_repr(int(chr))
@@ -122,12 +173,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog=script_name, description="Generate individual variant hashes per haploblock"
     )
+    parser.add_argument('--boundaries_file', type=pathlib.Path, required=True,
+                        help='boundaries_file')
     parser.add_argument('--clusters', required=True, type=pathlib.Path,
                         help='Path to clusters file generated with MMSeqs2')
     parser.add_argument('--variant_hashes', required=True, type=pathlib.Path,
                         help='Path to file with variant hashes')
-    parser.add_argument('--haploblock_hashes', required=True, type=pathlib.Path,
-                        help='Path to file with haploblock hashes')
     parser.add_argument('--chr', required=True, type=str, help='Chromosome number')
     parser.add_argument('--out', required=True, type=pathlib.Path,
                         help='Output folder path')
@@ -142,9 +193,9 @@ if __name__ == "__main__":
 
     try:
         run_variant_hashes(
+            args.boundaries_file,
             clusters_file=args.clusters,
             variant_hashes=args.variant_hashes,
-            haploblock_hashes=args.haploblock_hashes,
             chr=args.chr,
             out=args.out,
             threads=args.threads
@@ -153,11 +204,11 @@ if __name__ == "__main__":
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
-def run(clusters, variant_hashes, haploblock_hashes, chr, out, threads=None):
+def run(boundaries_file, clusters, variant_hashes, chr, out, threads=None):
     run_variant_hashes(
+        pathlib.Path(boundaries_file),
         pathlib.Path(clusters),
         pathlib.Path(variant_hashes),
-        pathlib.Path(haploblock_hashes),
         str(chr),
         pathlib.Path(out),
         threads

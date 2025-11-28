@@ -4,49 +4,9 @@ import logging
 import argparse
 import pathlib
 import numpy as np
-from multiprocessing import Pool, cpu_count
 import data_parser
 
 logger = logging.getLogger(__name__)
-
-HAPLOBLOCK_HASH_LENGTH = 20
-#PARALLEL_THRESHOLD = 1_000_000  # Enable multiprocessing if > 1M haploblocks
-PARALLEL_THRESHOLD = 1000  # DEV only option Trigger parallelization when >1000 haploblock
-
-def _make_hash(i: int) -> str:
-    """Helper function for multiprocessing."""
-    return np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH)
-
-
-def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int, int]]) -> dict[tuple[int, int], str]:
-    """
-    Generate unique binary hashes for each haploblock boundary.
-
-    Uses multiprocessing for large datasets to speed up hash generation.
-
-    Args:
-        haploblock_boundaries: List of (start, end) tuples.
-
-    Returns:
-        Dict mapping (start, end) -> binary hash string.
-    """
-    n_blocks = len(haploblock_boundaries)
-    logger.info(f"Generating hashes for {n_blocks:,} haploblocks")
-
-    if n_blocks == 0:
-        logger.warning("No haploblocks provided.")
-        return {}
-
-    # Decide execution strategy
-    if n_blocks > PARALLEL_THRESHOLD:
-        logger.info(f"Large dataset detected (> {PARALLEL_THRESHOLD:,} blocks). Using parallel generation.")
-        with Pool(cpu_count()) as pool:
-            hashes = pool.map(_make_hash, range(n_blocks))
-    else:
-        # Vectorized version for smaller datasets
-        hashes = [np.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH) for i in range(n_blocks)]
-
-    return dict(zip(haploblock_boundaries, hashes))
 
 
 def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]], chrom: str, out_dir: pathlib.Path) -> None:
@@ -57,16 +17,9 @@ def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]], chrom: str,
         f.writelines(f"{start}\t{end}\n" for start, end in haploblock_boundaries)
 
 
-def haploblock_hashes_to_tsv(haploblock2hash: dict[tuple[int, int], str], chrom: str, out_dir: pathlib.Path) -> None:
-    """Save haploblock hashes to TSV file."""
-    output_file = out_dir / f"haploblock_hashes_chr{chrom}.tsv"
-    with output_file.open('w') as f:
-        f.write("START\tEND\tHASH\n")
-        f.writelines(f"{start}\t{end}\t{hash_}\n" for (start, end), hash_ in haploblock2hash.items())
-
 def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) -> None:
     """
-    Modular function to generate haploblock boundaries and hashes.
+    Modular function to generate haploblock boundaries.
 
     Can be imported and called from another script/pipeline.
     """
@@ -76,12 +29,8 @@ def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathl
     # Ensure output directory exists
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Generating haploblock hashes")
-    haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
-
-    logger.info("Saving haploblock boundaries and hashes")
+    logger.info("Saving haploblock boundaries")
     haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
-    haploblock_hashes_to_tsv(haploblock2hash, chrom, out_dir)
 
 
 # -------------------------------------------------------------------------

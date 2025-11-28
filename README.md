@@ -206,7 +206,8 @@ This step uses previously generated haploblock phased sequences (--merged_consen
 
 Here is the instruction for **one haploblock (TNFa)**:
 ```
-python haploblock_pipeline/step4_clusters.py \
+python haploblock_pipeline/step5_variant_hashes.py \
+    --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv \
     --clusters out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv \
     --variant_hashes out_dir/TNFa/variant_hashes.tsv \
     --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
@@ -216,7 +217,8 @@ python haploblock_pipeline/step4_clusters.py \
 
 Here is the instruction for **all haploblocks**, please run it separately for each cluster TSV file:
 ```
-python haploblock_pipeline/step4_clusters.py \
+python haploblock_pipeline/step5_variant_hashes.py \
+    --boundaries_file data/haploblock_boundaries_chr6.tsv \
     --clusters out_dir/clusters/cluster_file.tsv \
     --variant_hashes out_dir/variant_hashes.tsv \
     --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
