@@ -69,7 +69,7 @@ def generate_consensus_fasta(ref_fasta: pathlib.Path,
     for hap, outfile in [(1, output_hap0), (2, output_hap1)]:
         with outfile.open("w") as f_out:
             subprocess.run(
-                ["bcftools", "consensus", "--quiet", "-H", str(hap), "-f", str(ref_fasta), str(vcf)],
+                ["bcftools", "consensus", "-H", str(hap), "-f", str(ref_fasta), str(vcf)],
                 stdout=f_out,
                 check=True,
             )
