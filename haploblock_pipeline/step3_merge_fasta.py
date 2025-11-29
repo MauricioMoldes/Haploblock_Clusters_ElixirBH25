@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import os
 import sys
-import logging
 import pathlib
 import subprocess
 from utils.logging import setup_logger
 
 logger = setup_logger()
+
 
 def run(input_dir: pathlib.Path, output_dir: pathlib.Path, threads = None, clean: bool = False):
     """

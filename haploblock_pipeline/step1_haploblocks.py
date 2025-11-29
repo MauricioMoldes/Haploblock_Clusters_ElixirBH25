@@ -3,7 +3,6 @@ import sys
 import logging
 import argparse
 import pathlib
-import numpy as np
 import data_parser
 
 logger = logging.getLogger(__name__)

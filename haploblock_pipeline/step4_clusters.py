@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
 import logging
 import pathlib
 import subprocess
@@ -9,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import data_parser
 
 logger = logging.getLogger(__name__)
+
 
 # ----------------------------------------------------------------------
 # MMseqs2 params
@@ -30,10 +30,10 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
 
     return haploblock2min_id, haploblock2cov_fraction
 
+
 # ----------------------------------------------------------------------
 # Run clustering per FASTA
 # ----------------------------------------------------------------------
-
 def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction: float, cov_mode: int,
                      chrom: str, start: str, end: str):
 
@@ -46,6 +46,7 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction
     tmp_dir = pathlib.Path(out) / "tmp"
     tmp_dir = str(tmp_dir.resolve())
 
+    # run MMSeqs2
     cmd = [
         "mmseqs", "easy-cluster",
         input_fasta,
@@ -101,6 +102,7 @@ def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Pa
 
     logger.info("All clusters computed successfully.")
 
+
 # ----------------------------------------------------------------------
 # Pipeline wrapper
 # ----------------------------------------------------------------------
@@ -114,6 +116,7 @@ def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mod
         cov_mode=cov_mode,
         threads=threads
     )
+
 
 # ----------------------------------------------------------------------
 # CLI
