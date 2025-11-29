@@ -1,7 +1,7 @@
 .vscode
 *__pycache__*
 
-# but not Halldorsson2019 recombination map (wget 403 error)
+# but not Halldorsson2019 recombination map (wget 403 error when wget from website)
 backup/*
 data/*
 data/Halldorsson2019/*
@@ -17,10 +17,4 @@ data/Halldorsson2019/*
 !data/haploblock_boundaries_chr6_TNFa.tsv
 !data/haploblock_boundaries_chr6_heightGenes.tsv
 
-mmseq2-exploration/data/*
-mmseq2-exploration/job-scripts/job-outs/*
-mmseq2-exploration/job-scripts/*.o*
-mmseq2-exploration/job-scripts/*.e*
-mmseq2-exploration/results/*
-mmseq2-exploration/*.tar.gz
-mmseq2-exploration/notebooks/*.ipynb_checkpoints
+out*
