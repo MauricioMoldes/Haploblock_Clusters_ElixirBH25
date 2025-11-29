@@ -2,7 +2,7 @@
 
 # Haploblock_Clusters_ElixirBH25
 
-This pipeline generates recombination-defined genomic hashes, unique identifiers for variant sets that include haplotype-resolved variant information. Every hash is a unique representation of an individual's genotype with a distinct combination of variants. We leverage large-scale population genomic data to train a model for a hash-based genotype-to-phenotype association prediction.
+This pipeline generates recombination-defined genomic hashes, unique identifiers that contain haplotype-resolved variant information. Every hash is a unique representation of an individual's genotype with a distinct combination of variants segragated across haploblocks. We also provide an example model for a hash-based genotype-to-phenotype mapping.
 
 
 # How to use this repo
@@ -12,14 +12,14 @@ git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_Eli
 cd Haploblock_Clusters_ElixirBH25/
 ```
 
-## Run the pipeline
+# Run the pipeline
 
-To create genomic hashes you can run the pipeline step-by-step or use a Docker container, as described below:
+To create genomic hashes you can run the pipeline using Docker or step-by-step, as described below:
 
 
-### Use Docker
+## Use Docker
 
-Build the Docker image (all necessary data will be downloaded into `data/` inside the container):
+Build the Docker image (example data will be downloaded into `data/` inside the container):
 ```
 docker build -t haploblock-pipeline .
 ```
@@ -37,15 +37,15 @@ cd haploblock_pipeline
 python3 main.py --config config/default.yaml [optional arguments]
 ```
 
-The default configuration file example is provided in [config/default.yaml](haploblock_pipeline/config/default.yaml). This configuration file defines all input paths, chromosome settings, and parallelization parameters.
+The default config file is in [config/default.yaml](haploblock_pipeline/config/default.yaml). It defines input paths, chromosome settings, and parallelization parameters.
 
-Optional pipeline arguments:
+Optional arguments:
 ```
---threads <N> : Number of threads to use (default: the number of available CPUs minus 1)
---step <1|2|3|4|5> : Execute only a specific pipeline step (default: all steps)
+--threads <N> : Number of threads to use (default: available CPUs minus 1)
+--step <1|2|3|4|5|all> : Execute only a specific pipeline step (default: 'all')
 ```
 
-Note: The pipeline can be also run inside a Docker container in the non-interactive mode with:
+The pipeline can be also run in the non-interactive mode:
 ```
 docker run --rm \
     -v host_mount_point/data:/app/Haploblock_Clusters_ElixirBH25/data \
@@ -57,6 +57,12 @@ docker run --rm \
 
 ## Run the pipeline step-by-step
 
+
+### Configure Python environment and install dependencies
+
+For Python dependencies see [requirements.txt](requirements.txt). For other dependencies and how to install them, see [install_dependencies.md](install_dependencies.md). Follow the instructions *carefully*: the pipeline requires samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2), all must be simlinked in `/usr/bin` or exported to PATH.
+
+
 ### Data
 
 All data listed below must be downloaded into `data/`:
@@ -65,23 +71,25 @@ All data listed below must be downloaded into `data/`:
 cd data/
 ```
 
-1. High-resolution recombination map from Halldorsson et al., 2019 with empirically defined genome-wide recombination rates:
+1. Recombination map from Halldorsson et al., 2019 with empirically defined genome-wide recombination rates:
 ```
 ## Download https://www.science.org/doi/suppl/10.1126/science.aau1043/suppl_file/aau1043_datas3.gz
-## Upload the file to the data/ directory in this repo
+## Upload the file to the data/ directory
 gzip -d aau1043_datas3.gz
 ```
 
-File `aau1043_datas3` contains averaged maternal and paternal recombination rates per genomic window.
+File `aau1043_datas3` contains averaged maternal and paternal recombination rates.
 
 2. 1000Genomes, HGSVC, Phase 3
-For an example, we use chromosome 6. If you would like to run all chromosomes, download all of the phased VCF files.  
-Phased VCF file of chromosome 6 (2548 samples):
+
+For the example, we use all populations (2548 samples) and chromosome 6. If you would like to run all chromosomes, download also phased VCF files for other chromosomes.
+
+Phased VCF file for chromosome 6:
 ```
 wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
 ```
 
-and index file (same point about chromosomes):
+and index file (same point as about chromosomes):
 ```
 wget https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz.tbi
 ```
@@ -94,17 +102,10 @@ gzip -d chr6.fa.gz
 bgzip chr6.fa
 ```
 
-Optionally for testing, if you want to run the pipeline for one population from 1000Genomes, you will also need a TSV file with the list of samples in data/, eg. CHB with 113 samples downloaded from: https://www.internationalgenome.org/data-portal/population/CHB
+Optionally for testing, if you want to run the pipeline for one population from 1000Genomes, you will also need a TSV file with the list of samples downloaded in data/, eg. CHB can be downloaded from: https://www.internationalgenome.org/data-portal/population/CHB
 
 
-### Configure Python environment and install dependencies
-
-For the list of required dependencies and how to install them, please go to [install_dependencies.md](install_dependencies.md) and follow the instructions *carefully*.
-
-The pipeline requires two Python libraries (numpy, pyyaml), as well as samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2). All must be simlinked in `/usr/bin` or exported to PATH.
-
-
-#### 1. Generate haploblock boundaries and haploblock hashes for chromosome 6 using the Halldorsson2019 genetic map:
+#### 1. Generate haploblock boundaries:
 
 ```
 python3 haploblock_pipeline/step1_haploblocks.py \
@@ -113,14 +114,18 @@ python3 haploblock_pipeline/step1_haploblocks.py \
     --out out_dir/
 ```
 
-This step creates **haploblock boundaries**, a TSV file (with header) with 2 columns (START END), as well as **haploblock hashes**, a TSV file (with header) with 3 columns (START END HASH). Haploblock hashes are unique identifiers for haploblocks, i.e., strings of 1/0s of length equal to the number of haploblocks.
+This step creates:
+- **haploblock boundaries**: TSV file with header and 2 columns (START END)
+- **haploblock hashes**: TSV file with header and 3 columns (START END HASH) 
 
 For a detailed description of how haplobock boundaries are defined see [https://github.com/jedrzejkubica/Elixir-BH-2025](https://github.com/jedrzejkubica/Elixir-BH-2025) as well as Halldorsson2019.
 
 
-#### 2. Generate haploblock phased FASTA files and individual hashes:
+#### 2. Generate haploblock phased sequences:
 
-This step uses the 1000Genomes phased VCF file to create a phased VCF with a subset of variants for every haploblock, then it generates a phased FASTA file for each individual.
+This step generates a phased FASTA file per individual and per haploblock by extracting regions corresponding to haploblock boundaries from the VCF file. It creates a temporary directory in --out_dir, where it saves the consensus haploblock phased sequences. It also calculates the mean and average of the number of variants per haploblock, they are saved in **out_dir/variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV).
+
+NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, therefore create a file chr_map with one chromosome number-to-name mapping per line (e.g., "6 chr6").
 
 Here is the instruction for **one haploblock (TNFa)** (example):
 ```
@@ -130,7 +135,6 @@ python haploblock_pipeline/step2_phased_sequences.py \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
     --chr 6 \
-    --variants data/variants_of_interest.txt \
     --out out_dir/TNFa/
 ```
 
@@ -142,22 +146,17 @@ python haploblock_pipeline/step2_phased_sequences.py \
     --ref data/chr6.fa.gz \
     --chr_map data/chr_map \
     --chr 6 \
-    --variants data/variants_of_interest.txt \
     --out out_dir/
 ```
 
-NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, therefore create a file chr_map with one chromosome number-to-name mapping per line (e.g., "6 chr6") and provide it with --chr_map.
-
-This script uses bcftools and bgzip to extract regions corresponding to haploblock boundaries (--boundaries_file) from a population VCF file (--vcf). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position". We also calculate the mean and average of the number of variants per haploblock, they are saved in **out_dir/variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV). We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **out_dir/variant_hashes.tsv** (with two columns: INDIVIDUAL HASH).
-
-Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes (data/igsr-chb.tsv.tsv) and run:
+Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes (data/igsr-chb.tsv.tsv):
 ```
-python haploblock_pipeline/step2_phased_sequences.py [...] --samples_file data/igsr-chb.tsv.tsv
+python haploblock_pipeline/step2_phased_sequences.py [...] --samples data/igsr-chb.tsv.tsv
 ```
 
-This step creates a temporary directory in --out_dir, where it creates a consensus haploblock phased sequences for both haploids for each individual by applying common variants (min allele-frequence must be > 0.05) from previously generated phasesd VCF files to the reference sequence (--ref). 
+#### 3. Merge haploblock phased sequences:
 
-Then generate one merged phased FASTA file per haploblock:
+This step generates one merged phased FASTA file per haploblock with all individuals .
 
 Here is the instruction for **one haploblock (TNFa)**:
 ```
@@ -173,7 +172,7 @@ haploblock_pipeline/step3_merge_fasta.py out_dir/tmp/consensus_fasta out_dir/hap
 ## Remove the temporary directory out_dir/tmp/ if you want
 ```
 
-#### 3. Generate haploblock clusters:
+#### 4. Generate haploblock clusters:
 
 This step generates haploblock clusters with MMSeqs2, make sure MMSeqs2 is available in PATH.
 
@@ -202,15 +201,15 @@ This step uses previously generated haploblock phased sequences (--merged_consen
 
 #### If you are not interested in SNPs, but only in haploblock clusters, you can stop here. Also, if you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file (see step 2).
 
-### 4. Generate variant hashes:
+### 5. Generate hashes:
 
 Here is the instruction for **one haploblock (TNFa)**:
 ```
 python haploblock_pipeline/step5_variant_hashes.py \
     --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv \
     --clusters out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv \
-    --variant_hashes out_dir/TNFa/variant_hashes.tsv \
     --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
+    --variants data/variants_of_interest.txt \
     --chr 6 \
     --out out_dir/TNFa/
 ```
@@ -220,8 +219,8 @@ Here is the instruction for **all haploblocks**, please run it separately for ea
 python haploblock_pipeline/step5_variant_hashes.py \
     --boundaries_file data/haploblock_boundaries_chr6.tsv \
     --clusters out_dir/clusters/cluster_file.tsv \
-    --variant_hashes out_dir/variant_hashes.tsv \
     --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
+    --variants data/variants_of_interest.txt \
     --chr 6 \
     --out out_dir/
 ```
@@ -234,7 +233,7 @@ This step generates variants hashes, 64-character strings of 0/1s. Each individu
 - variant hash: the number of SNPs of interest
 
 The output is a TSV file (with two columns: INDIVIDUAL HASH) in out_dir/individual_hashes.tsv.
-
+We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **out_dir/variant_hashes.tsv** (with two columns: INDIVIDUAL HASH). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position".
 
 ## Example Model
 

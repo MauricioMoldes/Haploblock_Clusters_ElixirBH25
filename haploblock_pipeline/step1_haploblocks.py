@@ -79,7 +79,7 @@ if __name__ == "__main__":
     )
     parser.add_argument('--recombination_file', type=pathlib.Path, required=True,
                         help='Path to recombination file (Halldorsson et al., 2019)')
-    parser.add_argument('--chr', type=str, required=True, help='Chromosome name or number')
+    parser.add_argument('--chr', type=str, required=True, help='Chromosome number')
     parser.add_argument('--out', type=pathlib.Path, required=True, help='Output folder path')
 
     args = parser.parse_args()
