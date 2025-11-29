@@ -8,7 +8,7 @@ from utils.logging import setup_logger
 
 logger = setup_logger()
 
-def run(input_dir: pathlib.Path, output_dir: pathlib.Path, threads: int | None = None, clean: bool = False):
+def run(input_dir: pathlib.Path, output_dir: pathlib.Path, threads = None, clean: bool = False):
     """
     Wrapper to call the merge_fasta_per_region.sh script with proper threads handling.
     """
