@@ -88,14 +88,22 @@ def main():
 
         # ---- STEP 5 ---------------------------------------------------------
         if step in ["5", "all"]:
+            variants_file = cfg["data"].get("variants")
+            variants_file = Path(variants_file) if variants_file else None
+            vcf=Path(cfg["data"]["vcf"]) if variants_file else None
+
+            samples_file = cfg["data"].get("samples_file")
+            samples_file = Path(samples_file) if samples_file else None
+
             step5_variant_hashes.run(
-                clusters=cfg["outputs"]["clusters"],
-                variant_hashes=cfg["outputs"]["variant_hashes"],
-                haploblock_hashes=cfg["outputs"]["haploblock_hashes"],
+                boundaries_file=cfg["data"]["boundaries_file"],
+                clusters_file=cfg["outputs"]["clusters"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),
+                variants_file=variants_file,
+                vcf=vcf,
+                samples_file=samples_file if samples_file else None,
                 threads=threads,
-                variants=cfg["data"]["variants"]
             )
 
     except Exception as e:

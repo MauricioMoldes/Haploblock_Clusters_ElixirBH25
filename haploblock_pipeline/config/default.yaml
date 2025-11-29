@@ -36,8 +36,6 @@ outputs:
   clusters: out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv
 
   # Step 5
-  variant_hashes: out_dir/TNFa/variant_hashes.tsv
-  haploblock_hashes: out_dir/TNFa/haploblock_hashes_chr6.tsv
 
 chromosome:
   number: 6

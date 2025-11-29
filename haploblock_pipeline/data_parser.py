@@ -193,7 +193,8 @@ def parse_variants_of_interest(variants_file):
     Parses variants of interest file with one variant per line in format chr:pos
 
     arguments:
-    - variants_file
+    - variants_file: file with one variant per line (--variants),
+        all must be in the same haploblock and formatatted as: "chr(number only):position"
     
     returns:
     - variants: list of string variant positions
@@ -329,8 +330,8 @@ def extract_region_from_fasta(fasta, chr, start, end, out):
 
 def parse_clusters(clusters_file):
     """
-    Parses clusters file from MMSeqs2 (no header) with 2 columns: representative, individual
-    assing unique ids for each cluster.
+    Parses clusters TSV file from MMSeqs2 (no header) with 2 columns: representative, individual
+    assign unique ids for each cluster.
     We want to create unique cluster ID (starting at 0) based on cluster representatives,
     and match individual to cluster IDs.
 
@@ -339,7 +340,7 @@ def parse_clusters(clusters_file):
 
     returns:
     - individual2cluster: dict, key=individual, value=unique clusterID
-    - clusters: list of cluster IDs
+    - clusters: list of clusterIDs
     """
     try:
         f = open(clusters_file, 'r')
@@ -376,42 +377,3 @@ def parse_clusters(clusters_file):
 
     return(individual2cluster, clusters)
 
-
-def parse_variant_hashes(variant_hashes):
-    """
-    Parses file with variant hashes with two columns: INDIVIDUAL HASH
-
-    arguments:
-    - variant_hashes: pathlib.Path
-    
-    returns:
-    - variant2hash: dict, key=individual, key=hash
-    """
-    variant2hash = {}
-
-    try:
-        f = open(variant_hashes, 'r')
-    except Exception as e:
-        logger.error("Opening provided variant hashes file %s: %s", variant_hashes, e)
-        raise Exception("Cannot open provided variant hashes file")
-    
-    # skip header
-    line = f.readline()
-    if not line.startswith("INDIVIDUAL\t"):
-        logging.error("hashes file %s is headerless? expecting headers but got %s",
-                      variant_hashes, line)
-        raise Exception("hashes file problem")
-    
-    for line in f:
-        split_line = line.rstrip().split('\t')
-
-        if len(split_line) != 2:
-            logger.error("Hashes file %s has bad line (not 2 tab-separated fields): %s",
-                         variant_hashes, line)
-            raise Exception("Bad line in the hashes file")
-        
-        (individual, hash) = split_line
-
-        variant2hash[individual] = hash
-
-    return(variant2hash)
