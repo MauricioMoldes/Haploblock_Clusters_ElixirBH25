@@ -116,7 +116,6 @@ python3 haploblock_pipeline/step1_haploblocks.py \
 
 This step creates:
 - **haploblock boundaries**: TSV file with header and 2 columns (START END)
-- **haploblock hashes**: TSV file with header and 3 columns (START END HASH) 
 
 For a detailed description of how haplobock boundaries are defined see [https://github.com/jedrzejkubica/Elixir-BH-2025](https://github.com/jedrzejkubica/Elixir-BH-2025) as well as Halldorsson2019.
 
@@ -196,10 +195,8 @@ python haploblock_pipeline/step4_clusters.py \
     --out out_dir/
 ```
 
-This step uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs2 parameters: min sequence identify and coverage fraction. For each haploblock it generates a cluster TSV file in directory **out_dir/clusters/**.
+This step uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs2 parameters: min sequence identify and coverage fraction. It generates a cluster TSV file for each haploblock in directory **out_dir/clusters/**.
 
-
-#### If you are not interested in SNPs, but only in haploblock clusters, you can stop here. Also, if you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file (see step 2).
 
 ### 5. Generate hashes:
 
@@ -208,10 +205,17 @@ Here is the instruction for **one haploblock (TNFa)**:
 python haploblock_pipeline/step5_variant_hashes.py \
     --boundaries_file data/haploblock_boundaries_chr6_TNFa.tsv \
     --clusters out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv \
-    --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
-    --variants data/variants_of_interest.txt \
     --chr 6 \
     --out out_dir/TNFa/
+```
+
+
+#### If you are not interested in SNPs, but only in haploblock clusters, you can stop here. Also, if you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file (see step 2). Optionally, if you want to run it for SNPs and/or one population use optional arguments:
+```
+python haploblock_pipeline/step5_variant_hashes.py [...] \
+    --variants data/variants_of_interest.txt \
+    --vcf data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+    --samples data/igsr-chb.tsv.tsv
 ```
 
 Here is the instruction for **all haploblocks**, please run it separately for each cluster TSV file:
@@ -219,8 +223,6 @@ Here is the instruction for **all haploblocks**, please run it separately for ea
 python haploblock_pipeline/step5_variant_hashes.py \
     --boundaries_file data/haploblock_boundaries_chr6.tsv \
     --clusters out_dir/clusters/cluster_file.tsv \
-    --haploblock_hashes out_dir/haploblock_hashes_chr6.tsv \
-    --variants data/variants_of_interest.txt \
     --chr 6 \
     --out out_dir/
 ```
@@ -230,14 +232,18 @@ This step generates variants hashes, 64-character strings of 0/1s. Each individu
 - chromosome hash: 10 characters
 - haploblock hash: 20 characters
 - cluster hash: 20 characters
-- variant hash: the number of SNPs of interest
+- variant hash: the number of SNPs of interest (optional)
 
-The output is a TSV file (with two columns: INDIVIDUAL HASH) in out_dir/individual_hashes.tsv.
-We assign individual hashes, ie integer numbers of lenght variants digits, each corresponding to variant of interest: 1 if variant in the sample or 0 otherwise, they are saved in **out_dir/variant_hashes.tsv** (with two columns: INDIVIDUAL HASH). Specify variants of interest in a file with one variant per line (--variants), they all must be in the same haploblock and in format: "chr(number only):position".
+This step generates:
+- **haploblock hashes**: TSV file with header and 3 columns (START\tEND\tHASH)
+- **cluster hashes**: TSV file with header and 2 columns (CLUSTER\tHASH)
+- **variant hashes** (optional): TSV file with header and 2 columns (VARIANT\tHASH)
+- **individual hashes**: TSV file with header and 2 columns (INDIVUDIAL\tHASH)
+
 
 ## Example Model
 
-A simple model to relate the phenotype $y_i$ with our haploblock-specific hashes $x_{ih}$ is a weighted linear model as follows:
+A simple model to relate the phenotype $y_i$ with individual hashes $x_{ih}$ is a weighted linear model as follows:
 
 $y_i = \beta_0 + \sum_{h=1}^{H}{\alpha_{ih} (x^T_{ih}U_h)}$
 
