@@ -4,7 +4,11 @@ import sys
 import logging
 import argparse
 import pathlib
+import subprocess
+from typing import Dict, List, Optional
+
 import numpy as np
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import Pool, cpu_count
 
@@ -65,6 +69,65 @@ def generate_cluster_hashes(clusters):
     return cluster2hash
 
 
+# -------------------------------------------------------------------------
+# Variant hash generation
+# -------------------------------------------------------------------------
+def generate_variant_hashes(variants: List[str],
+                            vcf: pathlib.Path,
+                            chrom: str,
+                            haploblock_boundaries: List[tuple],
+                            samples: Optional[List[str]]) -> Dict[str, str]:
+    """Generate binary variant presence hashes for all samples and haplotypes."""
+    if not samples:
+        logger.warning("No samples provided for variant hash generation. Returning empty dict.")
+        return {}
+
+    first_pos = variants[0]
+
+    # find region containing first variant
+    start = end = None
+    for (s, e) in haploblock_boundaries:
+        if int(s) <= int(first_pos) <= int(e):
+            start, end = s, e
+            break
+
+    if start is None:
+        raise ValueError(f"Variant {first_pos} not found in any haploblock")
+
+    idx_map = {str(v): i for i, v in enumerate(variants)}
+    variant2hash = {
+        f"{sample}_chr{chrom}_region_{start}-{end}_hap{h}": ["0"] * len(variants)
+        for sample in samples for h in (0, 1)
+    }
+
+    region = f"{chrom}:{first_pos}-{end}"
+    result = subprocess.run(
+        ["bcftools", "query", "-f", "%CHROM\t%POS[\t%GT]\n",
+         "-s", ",".join(samples), "--force-samples", "-r", region, str(vcf)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    for line in result.stdout.splitlines():
+        _, pos, *gts = line.split("\t")
+        if pos not in idx_map:
+            continue
+
+        i = idx_map[pos]
+        for sample_idx, gt in enumerate(gts):
+            if "|" not in gt:
+                continue
+            a0, a1 = gt.split("|")
+            sample = samples[sample_idx]
+            if a0 == "1":
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap0"][i] = "1"
+            if a1 == "1":
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap1"][i] = "1"
+
+    return {k: "".join(v) for k, v in variant2hash.items()}
+
+
 def generate_individual_hash(individual, individual2cluster, cluster2hash,
                              variant2hash, haploblock2hash, chr_hash):
     """Generate hash string for a single individual."""
@@ -117,6 +180,15 @@ def haploblock_hashes_to_tsv(haploblock2hash: dict[tuple[int, int], str], chrom:
         f.writelines(f"{start}\t{end}\t{hash_}\n" for (start, end), hash_ in haploblock2hash.items())
 
 
+def write_tsv_variant_hashes(variant2hash: Dict[str, str], out_dir: pathlib.Path) -> None:
+    out = out_dir / "variant_hashes.tsv"
+    with out.open("w") as f:
+        f.write("INDIVIDUAL\tHASH\n")
+        for ind, h in variant2hash.items():
+            f.write(f"{ind}\t{h}\n")
+
+
+
 def hashes_to_TSV(individual2hash, out):
     output_path = os.path.join(out, "individual_hashes.tsv")
     with open(output_path, 'w') as f:
@@ -126,22 +198,25 @@ def hashes_to_TSV(individual2hash, out):
     logger.info(f"Individual hashes written to {output_path}")
 
 
-def run_variant_hashes(boundaries_file, chrom: str, clusters_file, variant_hashes, chr, out, threads: int = None):
+def run_variant_hashes(boundaries_file, vcf, clusters_file, chrom, out, samples_file, variants_file, threads):
     logger.info("Generating haploblock hashes")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
     haploblock_hashes_to_tsv(haploblock2hash, chrom, out)
 
-    logger.info("Parsing clusters")
-    individual2cluster, clusters = data_parser.parse_clusters(clusters_file)
+    logger.info("Generating cluster hashes")
+    (individual2cluster, clusters) = data_parser.parse_clusters(clusters_file)
     logger.info(f"Found {len(clusters)} clusters with {len(individual2cluster)} individuals")
+    cluster2hash = generate_cluster_hashes(clusters)
 
-    logger.info("Parsing variant hashes")
-    variant2hash = data_parser.parse_variant_hashes(variant_hashes)
+    if variants_file:
+        logger.info("Generating variant hashes")
+        variants = data_parser.parse_variants_of_interest(variants_file)
+        variant2hash = generate_variant_hashes(variants, vcf, chrom, haploblock_boundaries, samples_file)
+        write_tsv_variant_hashes(variant2hash, out)
 
     logger.info("Generating individual hashes (parallelized)")
-    chr_hash = np.binary_repr(int(chr))
-    cluster2hash = generate_cluster_hashes(clusters)
+    chr_hash = np.binary_repr(int(chrom))
     max_workers = threads or (os.cpu_count() - 1 or 1)
     individual2hash = generate_individual_hashes_parallel(
         individual2cluster, cluster2hash, variant2hash, haploblock2hash, chr_hash, max_workers=max_workers
@@ -175,42 +250,45 @@ if __name__ == "__main__":
     )
     parser.add_argument('--boundaries_file', type=pathlib.Path, required=True,
                         help='boundaries_file')
+    parser.add_argument("--vcf", type=pathlib.Path, required=True,
+                        help="Phased VCF file")
     parser.add_argument('--clusters', required=True, type=pathlib.Path,
                         help='Path to clusters file generated with MMSeqs2')
-    parser.add_argument('--variant_hashes', required=True, type=pathlib.Path,
-                        help='Path to file with variant hashes')
     parser.add_argument('--chr', required=True, type=str, help='Chromosome number')
     parser.add_argument('--out', required=True, type=pathlib.Path,
                         help='Output folder path')
-    parser.add_argument(
-    "--threads",
-    type=int,
-    default=None,
-    help="Number of worker threads for generating individual hashes (default: auto-detect CPU cores)"
-    )
+    parser.add_argument("--samples", type=pathlib.Path, default=None,
+                        help="TSV file with samples from 1000Genomes (optional)")
+    parser.add_argument("--variants", type=pathlib.Path, default=None)
+    parser.add_argument("--threads", type=int, default=None,
+                        help="Number of worker threads for generating individual hashes (default: auto-detect CPU cores)")
 
     args = parser.parse_args()
 
     try:
         run_variant_hashes(
-            args.boundaries_file,
+            boundaries_file=args.boundaries_file,
+            vcf=args.vcf,
             clusters_file=args.clusters,
-            variant_hashes=args.variant_hashes,
             chr=args.chr,
             out=args.out,
+            samples_file=args.samples,
+            variants_file=args.variants,
             threads=args.threads
         )
     except Exception as e:
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
-def run(boundaries_file, clusters, variant_hashes, chr, out, threads=None):
+def run(boundaries_file, vcf, clusters_file, chr, out, samples_file, variants_file, threads):
     run_variant_hashes(
         pathlib.Path(boundaries_file),
-        pathlib.Path(clusters),
-        pathlib.Path(variant_hashes),
+        pathlib.Path(vcf),
+        pathlib.Path(clusters_file),
         str(chr),
         pathlib.Path(out),
+        pathlib.Path(samples_file),
+        pathlib.Path(variants_file),
         threads
     )
 

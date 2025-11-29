@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import argparse
 import sys
+import os
 import yaml
+import argparse
 from pathlib import Path
 
 import step1_haploblocks
@@ -9,7 +10,6 @@ import step2_phased_sequences
 import step3_merge_fasta
 import step4_clusters
 import step5_variant_hashes
-
 
 from utils.logging import setup_logger
 
@@ -23,10 +23,11 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Haploblocks Pipeline")
     parser.add_argument("--config", type=Path, required=True,
                         help="Path to YAML configuration file")
-    parser.add_argument("--step", type=str, help="Pipeline step (1–5 or all)")
+    parser.add_argument("--step", type=str, help="Pipeline step to run ('all' or select one between 1 and 5)")
     parser.add_argument("--threads", type=int, help="Number of CPU threads")
 
     args = parser.parse_args()
+    
     logger = setup_logger()
 
     logger.info(f"Loading configuration from {args.config}")
@@ -36,7 +37,6 @@ def main():
     threads = args.threads if args.threads else cfg["pipeline"]["threads"]
 
     if threads == "auto":
-        import os
         threads = max(1, (os.cpu_count() or 2) - 1)
 
     logger.info(f"Starting Haploblocks pipeline (Step: {step}, Threads: {threads})")
@@ -58,13 +58,12 @@ def main():
 
             step2_phased_sequences.run(
                 boundaries_file=cfg["data"]["boundaries_file"],
-                samples_file=samples_file,
                 vcf=cfg["data"]["vcf"],
                 ref=cfg["data"]["ref"],
                 chr_map=cfg["data"]["chr_map"],
                 chr=cfg["chromosome"]["number"],
-                variants=cfg["data"]["variants"],
                 out=Path(cfg["outputs"]["step2_out"]),
+                samples_file=samples_file,
                 threads=threads
             )
 
@@ -95,7 +94,8 @@ def main():
                 haploblock_hashes=cfg["outputs"]["haploblock_hashes"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),
-                threads=threads
+                threads=threads,
+                variants=cfg["data"]["variants"]
             )
 
     except Exception as e:
