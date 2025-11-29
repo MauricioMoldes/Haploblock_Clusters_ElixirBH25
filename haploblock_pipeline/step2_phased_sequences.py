@@ -64,6 +64,8 @@ def generate_consensus_fasta(ref_fasta: pathlib.Path,
     vcf_name = vcf.stem
     if vcf_name.endswith(".vcf"):
         vcf_name = vcf_name[:-4]
+    if vcf_name.endswith(".norm.flt"):
+        vcf_name = vcf_name[:-9]
 
     output_hap0 = tmp_dir / f"{vcf_name}_hap0.fa"
     output_hap1 = tmp_dir / f"{vcf_name}_hap1.fa"
