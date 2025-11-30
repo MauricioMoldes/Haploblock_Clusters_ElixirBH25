@@ -28,8 +28,8 @@ def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathl
     # Ensure output directory exists
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Saving haploblock boundaries")
     haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
+    logger.info(f"Haploblock boundaries written to {out_dir}")
 
 
 # -------------------------------------------------------------------------
