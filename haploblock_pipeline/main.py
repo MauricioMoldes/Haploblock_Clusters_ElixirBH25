@@ -57,7 +57,7 @@ def main():
             samples_file = Path(samples_file) if samples_file else None
 
             step2_phased_sequences.run(
-                boundaries_file=cfg["data"]["boundaries_file"],
+                boundaries_file=cfg["outputs"]["boundaries_file"],
                 vcf=cfg["data"]["vcf"],
                 ref=cfg["data"]["ref"],
                 chr_map=cfg["data"]["chr_map"],
@@ -78,7 +78,7 @@ def main():
         # ---- STEP 4 ---------------------------------------------------------
         if step in ["4", "all"]:
             step4_clusters.run(
-                boundaries_file=cfg["data"]["boundaries_file"],
+                boundaries_file=cfg["outputs"]["boundaries_file"],
                 merged_consensus_dir=cfg["outputs"]["merged_consensus_dir"],
                 variant_counts=cfg["outputs"]["variant_counts"],
                 chr=cfg["chromosome"]["number"],
@@ -96,7 +96,7 @@ def main():
             samples_file = Path(samples_file) if samples_file else None
 
             step5_variant_hashes.run(
-                boundaries_file=cfg["data"]["boundaries_file"],
+                boundaries_file=cfg["outputs"]["boundaries_file"],
                 clusters_file=cfg["outputs"]["clusters"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),

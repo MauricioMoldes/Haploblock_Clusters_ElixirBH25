@@ -12,16 +12,16 @@ pipeline:
 
 data:
   recombination_file: data/Halldorsson2019/aau1043_datas3
-  boundaries_file: data/haploblock_boundaries_chr6_TNFa.tsv
   vcf: data/ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
   ref: data/chr6.fa.gz
   chr_map: data/chr_map
   variants: data/variants_of_interest.txt
-  samples_file: data/igsr-chb.tsv.tsv   # optional
+  samples_file: null   # optional
 
 outputs:
   # Base output directory for all steps
   out_dir: out_dir/TNFa/
+  boundaries_file: out_dir/TNFa/haploblock_boundaries_chr6_TNFa.tsv
 
   # Step 2
   step2_out: out_dir/TNFa
