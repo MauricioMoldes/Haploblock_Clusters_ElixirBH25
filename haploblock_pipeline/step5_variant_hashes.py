@@ -271,8 +271,8 @@ def run_hashes(boundaries_file: pathlib.Path,
 
     logger.info("Generating cluster hashes and individual hashes")
     for (start, end) in haploblock_boundaries:
-        cluster_file = out / "clusters" / f"chr{chrom}_{start}-{end}_cluster.tsv"
-        (individual2cluster, clusters) = data_parser.parse_clusters(cluster_file, len(clusters))
+        cluster_file = clusters_dir / f"chr{chrom}_{start}-{end}_cluster.tsv"
+        (individual2cluster, clusters) = data_parser.parse_clusters(cluster_file)
         cluster2hash = generate_cluster_hashes(clusters)
         cluster_hashes_to_tsv(cluster2hash, start, end, out)
 
