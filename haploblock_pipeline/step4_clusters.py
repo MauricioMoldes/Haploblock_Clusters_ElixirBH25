@@ -2,6 +2,7 @@
 import os
 import logging
 import pathlib
+import argparse
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,6 +15,13 @@ logger = logging.getLogger(__name__)
 # MMseqs2 params
 # ----------------------------------------------------------------------
 def calculate_mmseq_params(variant_counts_file: pathlib.Path):
+    """
+    Calculate min sequence identify and coverage fraction for MMSeqs2
+    
+    returns:
+    - haploblock2min_id: dict, key=(start, end), value=min sequence identify
+    - haploblock2cov_fraction: dict, key=(start, end), value=coverage fraction
+    """
     haploblock2min_id = {}
     haploblock2cov_fraction = {}
 
@@ -28,7 +36,7 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
             haploblock2min_id[(start, end)] = 1 - (float(mean) / hap_len)
             haploblock2cov_fraction[(start, end)] = 1 - (682 / hap_len)
 
-    return haploblock2min_id, haploblock2cov_fraction
+    return(haploblock2min_id, haploblock2cov_fraction)
 
 
 # ----------------------------------------------------------------------
@@ -65,20 +73,24 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction
 # ----------------------------------------------------------------------
 # Main workflow
 # ----------------------------------------------------------------------
-def run_clusters(boundaries_file: pathlib.Path, merged_consensus_dir: pathlib.Path,
-                 variant_counts_file: pathlib.Path, chrom: str, out_dir: pathlib.Path,
-                 cov_mode: int, threads: int = None):
+def run_clusters(boundaries_file: pathlib.Path,
+                 merged_consensus_dir: pathlib.Path,
+                 variant_counts_file: pathlib.Path,
+                 chrom: str,
+                 out_dir: pathlib.Path,
+                 cov_mode: int,
+                 threads: None):
 
+    # Create output and temporary directories if they don't exist
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "clusters").mkdir(exist_ok=True)
     (out_dir / "tmp").mkdir(exist_ok=True)
 
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
-    haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(variant_counts_file)
-
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
-    logger.info("Computing clusters with MMseqs2 using %s threads...", threads or "auto")
+    (haploblock2min_id, haploblock2cov_fraction) = calculate_mmseq_params(variant_counts_file)
 
+    logger.info("Computing clusters with MMseqs2 using %s threads...", threads or "auto")
     max_workers = threads or max(1, os.cpu_count() - 1)
     futures = []
 
@@ -127,13 +139,20 @@ if __name__ == "__main__":
         level=logging.INFO
     )
     parser = argparse.ArgumentParser(description="Cluster haploblock consensus sequences using MMseqs2")
-    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True)
-    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True)
-    parser.add_argument("--variant_counts", type=pathlib.Path, required=True)
-    parser.add_argument("--chr", type=str, required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    parser.add_argument("--cov_mode", type=int, default=0)
-    parser.add_argument("--threads", type=int, default=None)
+    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True,
+                        help="TSV file with header (START\tEND) and 2 columns: start end")
+    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True,
+                        help="Path to folder with merged phased FASTA files")
+    parser.add_argument("--variant_counts", type=pathlib.Path, required=True,
+                        help="TSV file with 4 columns: START, END, MEAN, STDEV")
+    parser.add_argument("--chr", type=str, required=True,
+                        help="Chromosome number")
+    parser.add_argument("--out", type=pathlib.Path, required=True,
+                        help="Output folder path")
+    parser.add_argument("--cov_mode", type=int, default=0,
+                        help="alignment coverage, see MMSeqs2 documentation")
+    parser.add_argument("--threads", type=int, default=None,
+                        help="TODO")
 
     args = parser.parse_args()
 

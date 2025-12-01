@@ -19,7 +19,7 @@ To create genomic hashes you can run the pipeline using Docker or step-by-step, 
 
 ## Use Docker
 
-Build the Docker image (example data will be downloaded into `data/` inside the container):
+Build the Docker image (example data will be automatically downloaded into `data/` inside the container):
 ```
 docker build -t haploblock-pipeline .
 ```
@@ -27,7 +27,7 @@ docker build -t haploblock-pipeline .
 Run the Docker container interactively:
 ```
 docker run -it --rm \
-    -v data:/app/Haploblock_Clusters_ElixirBH25/data \
+    -v host_mount_point/data:/app/Haploblock_Clusters_ElixirBH25/data \
     haploblock-pipeline
 ```
 
@@ -37,7 +37,7 @@ cd haploblock_pipeline
 python3 main.py --config config/default.yaml [optional arguments]
 ```
 
-The default config file is in [config/default.yaml](haploblock_pipeline/config/default.yaml). It defines input paths, chromosome settings, and parallelization parameters.
+The default config file is in [config/default.yaml](haploblock_pipeline/config/default.yaml). It defines input paths, pipeline settings, and parallelization parameters.
 
 Optional arguments:
 ```
@@ -60,7 +60,7 @@ docker run --rm \
 
 ### Configure Python environment and install dependencies
 
-For Python dependencies see [requirements.txt](requirements.txt). For other dependencies and how to install them, see [install_dependencies.md](install_dependencies.md). Follow the instructions *carefully*: the pipeline requires samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2), all must be simlinked in `/usr/bin` or exported to PATH.
+For Python dependencies see [requirements.txt](requirements.txt). For other dependencies and how to install them see [install_dependencies.md](install_dependencies.md). Follow the instructions *carefully*: the pipeline requires samtools, bcftools, htslib (see https://www.htslib.org/) and MMSeqs2 (https://github.com/soedinglab/MMseqs2), all must be simlinked in `/usr/bin` or exported to PATH.
 
 
 ### Data
@@ -122,7 +122,7 @@ For a detailed description of how haplobock boundaries are defined see [https://
 
 #### 2. Generate haploblock phased sequences:
 
-This step generates a phased FASTA file per individual and per haploblock by extracting regions corresponding to haploblock boundaries from the VCF file. It creates a temporary directory in --out_dir, where it saves the consensus haploblock phased sequences. It also calculates the mean and average of the number of variants per haploblock, they are saved in **out_dir/variant_counts.tsv** (with 4 columns: START, END, MEAN, STDEV).
+This step generates a phased FASTA file for each individual and each haploblock by extracting sequence segments defined by the haploblock boundaries from the input VCF. A temporary directory is created inside --out_dir, where the consensus phased haploblock sequences are stored. It also computes summary statistics on the number of variants per haploblock. These values are written to out_dir/variant_counts.tsv, a four-column table containing START, END, MEAN, STDEV.
 
 NOTE: VCF file has "6" instead of "chr6", which is required by bcftools consensus, therefore create a file chr_map with one chromosome number-to-name mapping per line (e.g., "6 chr6").
 
@@ -148,14 +148,14 @@ python haploblock_pipeline/step2_phased_sequences.py \
     --out out_dir/
 ```
 
-Optionally, if you want to run it for one population, use the TSV file with samples from 1000Genomes (data/igsr-chb.tsv.tsv):
+Optionally, if you want to run it for one population, use a TSV file with samples from 1000Genomes (data/igsr-chb.tsv.tsv):
 ```
 python haploblock_pipeline/step2_phased_sequences.py [...] --samples data/igsr-chb.tsv.tsv
 ```
 
 #### 3. Merge haploblock phased sequences:
 
-This step generates one merged phased FASTA file per haploblock with all individuals .
+This step produces a single merged phased FASTA file for each haploblock with sequences of all individuals.
 
 Here is the instruction for **one haploblock (TNFa)**:
 ```
@@ -173,7 +173,7 @@ haploblock_pipeline/step3_merge_fasta.py out_dir/tmp/consensus_fasta out_dir/hap
 
 #### 4. Generate haploblock clusters:
 
-This step generates haploblock clusters with MMSeqs2, make sure MMSeqs2 is available in PATH.
+This step computes haploblock clusters using MMSeqs2. Make sure MMSeqs2 is available in PATH.
 
 Here is the instruction for **one haploblock (TNFa)**:
 ```
@@ -195,7 +195,7 @@ python haploblock_pipeline/step4_clusters.py \
     --out out_dir/
 ```
 
-This step uses previously generated haploblock phased sequences (--merged_consensus_dir) and variant counts (--variant_counts), based on which it calculates MMSeqs2 parameters: min sequence identify and coverage fraction. It generates a cluster TSV file for each haploblock in directory **out_dir/clusters/**.
+This step uses the merged phased sequences (--merged_consensus_dir) and variant statistics (--variant_counts) to derive MMSeqs2 parameters: minimum sequence identity and coverage thresholds. It produces one cluster table per haploblock, saved in out_dir/clusters/.
 
 
 ### 5. Generate hashes:
@@ -210,7 +210,7 @@ python haploblock_pipeline/step5_variant_hashes.py \
 ```
 
 
-#### If you are not interested in SNPs, but only in haploblock clusters, you can stop here. Also, if you are interested in comparing these results to other groups of sequences, you can pull the cluster representatives from the merged fasta file (see step 2). Optionally, if you want to run it for SNPs and/or one population use optional arguments:
+#### If you are not interested in SNPs, but only in haploblock clusters, you can stop here. If you want to compare these clusters to external sequence groups, you can extract cluster representatives from the merged FASTA files generated earlier (step 2). Optionally, if you want to run it for SNPs and/or one population use optional arguments:
 ```
 python haploblock_pipeline/step5_variant_hashes.py [...] \
     --variants data/variants_of_interest.txt \

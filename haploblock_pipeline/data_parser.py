@@ -156,7 +156,8 @@ def parse_samples(samples_file):
             raise Exception("Bad line in the samples file")
 
         samples.append(sample)
-
+    
+    logger.info("Found %d samples", len(samples))
     return(samples)
 
 
@@ -185,6 +186,7 @@ def parse_samples_from_vcf(vcf):
                               capture_output=True,
                               text=True).stdout.splitlines()
 
+    logger.info("Found %d samples", len(samples))
     return(samples)
 
 
@@ -334,6 +336,7 @@ def parse_clusters(clusters_file):
     assign unique ids for each cluster.
     We want to create unique cluster ID (starting at 0) based on cluster representatives,
     and match individual to cluster IDs.
+    individual is a string formatted as:
 
     arguments:
     - clusters_file

@@ -20,15 +20,16 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------
 def count_variants(vcf: pathlib.Path) -> Tuple[int, int]:
     """
-    Count the number of variants in a bgzipped VCF file for each haplotype.
-    Returns: (count_hap0, count_hap1)
+    Count the number of variants in the VCF file for each haplotype separately.
+    Returns:
+    - count_hap0: int
+    - count_hap1: int
     """
     result = subprocess.run(
         ["bcftools", "query", "-f", "[ %GT]", str(vcf)],
         capture_output=True,
         text=True,
-        check=True,
-    )
+        check=True)
 
     count_0 = count_1 = 0
     for token in result.stdout.split():
@@ -45,19 +46,78 @@ def count_variants(vcf: pathlib.Path) -> Tuple[int, int]:
         count_0 += left == "1"
         count_1 += right == "1"
 
-    return count_0, count_1
+    return(count_0, count_1)
+
+
+# -------------------------------------------------------------------------
+# VCF processing
+# -------------------------------------------------------------------------
+def normalize_vcf(vcf: pathlib.Path, ref: pathlib.Path, out_dir: pathlib.Path) -> pathlib.Path:
+    """
+    Normalize indels
+
+    returns:
+    - normalized_vcf: pathlib.Path
+    """
+    vcf_name = vcf.stem
+    if vcf_name.endswith(".vcf"):
+        vcf_name = vcf_name[:-4]
+
+    normalized_vcf = out_dir / "tmp" / f"{vcf_name}.norm.vcf.gz"
+    bcftools_log_file = out_dir / "tmp" / "log_bcftools.txt"  # file for BCFtools log messages
+
+    subprocess.run(["bcftools", "norm", "-f", str(ref), str(vcf), "-Ob", "-o", normalized_vcf],
+                    stdout=subprocess.PIPE,
+                    stderr=open(bcftools_log_file, "a+"),
+                    text=True,
+                    check=True)
+    
+    # index normalized VCF
+    subprocess.run(["bcftools", "index", normalized_vcf],
+                    check=True)
+    
+    return(normalized_vcf)
+
+
+def filter_vcf(vcf: pathlib.Path, out_dir: pathlib.Path) -> pathlib.Path:
+    """
+    Filter adjacent indels within 5bp and variants with quality < 40
+
+    returns:
+    - filtered_vcf: pathlib.Path
+    """
+    vcf_name = vcf.stem
+    if vcf_name.endswith(".vcf"):
+        vcf_name = vcf_name[:-4]
+
+    filtered_vcf = out_dir / "tmp" / f"{vcf_name}.flt.vcf.gz"
+    bcftools_log_file = out_dir / "tmp" / "log_bcftools.txt"  # file for BCFtools log messages
+    
+    subprocess.run(["bcftools", "filter", "--IndelGap", "5", "-e", "'QUAL<40'", str(vcf), "-Ob", "-o", filtered_vcf],
+                    stdout=subprocess.PIPE,
+                    stderr=open(bcftools_log_file, "a+"),
+                    text=True,
+                    check=True)
+    
+    # index filtered VCF
+    subprocess.run(["bcftools", "index", filtered_vcf],
+                    check=True)
+
+    return(filtered_vcf)
 
 
 # -------------------------------------------------------------------------
 # Consensus FASTA generation
 # -------------------------------------------------------------------------
-def generate_consensus_fasta(ref_fasta: pathlib.Path,
+def generate_consensus_fasta(ref: pathlib.Path,
                              vcf: pathlib.Path,
                              out_dir: pathlib.Path) -> Tuple[pathlib.Path, pathlib.Path]:
     """
-    Apply variants from VCF to the reference to create phased consensus FASTA files.
-    Uses bcftools consensus (external command).
+    Apply variants from VCF to the reference, create phased consensus FASTA files.
+    Use bcftools consensus, as described here:
+    https://samtools.github.io/bcftools/howtos/consensus-sequence.html
     """
+    # Create temporary directory for phased sequences if it doesn't exist
     tmp_dir = out_dir / "tmp" / "consensus_fasta"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,25 +130,24 @@ def generate_consensus_fasta(ref_fasta: pathlib.Path,
     output_hap0 = tmp_dir / f"{vcf_name}_hap0.fa"
     output_hap1 = tmp_dir / f"{vcf_name}_hap1.fa"
 
-    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # file for BCFtools log
+    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # file for BCFtools log messages
 
-    for hap, outfile in [(1, output_hap0), (2, output_hap1)]:
+    for (hap, out_file) in [(1, output_hap0), (2, output_hap1)]:
         subprocess.run(
-                ["bcftools", "consensus", "-H", str(hap), "-f", str(ref_fasta), str(vcf)],
-                stdout=outfile.open("w"),
+                ["bcftools", "consensus", "-H", str(hap), "-f", str(ref), str(vcf)],
+                stdout=out_file.open("w"),
                 stderr=open(bcftools_log_file, "a+"),
-                check=True,
-            )
+                check=True)
 
-    return output_hap0, output_hap1
+    return(output_hap0, output_hap1)
 
 
 # -------------------------------------------------------------------------
 # Write outputs
 # -------------------------------------------------------------------------
-def write_tsv_variant_counts(haploblock2count: Dict[tuple, Tuple[float, float]], out_dir: pathlib.Path) -> None:
-    out = out_dir / "variant_counts.tsv"
-    with out.open("w") as f:
+def variant_counts_to_TSV(haploblock2count: Dict[tuple, Tuple[float, float]], out_dir: pathlib.Path):
+    out_file = out_dir / "variant_counts.tsv"
+    with open(out_file, "w") as f:
         f.write("START\tEND\tMEAN\tSTDEV\n")
         for (s, e), (mean, stdev) in haploblock2count.items():
             f.write(f"{s}\t{e}\t{mean:.3g}\t{stdev:.3g}\n")
@@ -102,68 +161,17 @@ def _process_sample_for_region(args):
     if args is None:
         return None  # skip empty worker
 
-    sample, region_vcf, region_fasta, ref, out_dir = args
+    (sample, region_vcf, region_fasta, ref, out_dir) = args
     try:
         sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out_dir)
-
         normalized_vcf = normalize_vcf(sample_vcf, ref, out_dir)
-
         filtered_normalized_vcf = filter_vcf(normalized_vcf, out_dir)
-
-        c0, c1 = count_variants(sample_vcf)
+        (count_0, count_1) = count_variants(sample_vcf)
         generate_consensus_fasta(region_fasta, filtered_normalized_vcf, out_dir)
-        return sample, c0, c1
+        return(sample, count_0, count_1)
     except Exception as e:
         logger.exception("Error processing sample %s: %s", sample, e)
-        return sample, 0, 0
-
-
-def normalize_vcf(vcf, ref, out_dir):
-    """
-    Normalize indels
-    """
-    vcf_name = vcf.stem
-    if vcf_name.endswith(".vcf"):
-        vcf_name = vcf_name[:-4]
-
-    normalized_vcf = os.path.join(out_dir, "tmp", f"{vcf_name}.norm.vcf.gz")
-    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # file for BCFtools log
-
-    subprocess.run(["bcftools", "norm", "-f", str(ref), str(vcf), "-Ob", "-o", normalized_vcf],
-                    stdout=subprocess.PIPE,
-                    stderr=open(bcftools_log_file, "a+"),
-                    text=True,
-                    check=True)
-    
-    subprocess.run(["bcftools", "index",
-                    normalized_vcf],
-                    check=True)
-    
-    return(pathlib.Path(normalized_vcf))
-
-
-def filter_vcf(vcf, out_dir):
-    """
-    Normalize indels
-    """
-    vcf_name = vcf.stem
-    if vcf_name.endswith(".vcf"):
-        vcf_name = vcf_name[:-4]
-
-    filtered_vcf = os.path.join(out_dir, "tmp", f"{vcf_name}.flt.vcf.gz")
-    bcftools_log_file = os.path.join(out_dir, "tmp", "log_bcftools.txt")  # write BCFtools logs to file
-    
-    subprocess.run(["bcftools", "filter", "--IndelGap", "5", "-e", "'QUAL<40'", str(vcf), "-Ob", "-o", filtered_vcf],
-                    stdout=subprocess.PIPE,
-                    stderr=open(bcftools_log_file, "a+"),
-                    text=True,
-                    check=True)
-    
-    subprocess.run(["bcftools", "index",
-                    filtered_vcf],
-                    check=True)
-
-    return(pathlib.Path(filtered_vcf))
+        return(sample, 0, 0)
 
 
 # -------------------------------------------------------------------------
@@ -176,23 +184,20 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
                          chrom: str,
                          out_dir: pathlib.Path,
                          samples_file: Optional[pathlib.Path] = None,
-                         workers: Optional[int] = None) -> None:
-
-    # Create output paths
-    out_dir.mkdir(parents=True, exist_ok=True)
-    tmp_dir = out_dir / "tmp"
-    (tmp_dir / "consensus_fasta").mkdir(parents=True, exist_ok=True)
-
+                         workers: Optional[int] = None):
+    """
+    Generate haploblock phased sequences. It is a modular function
+    that can be imported and called from another script/pipeline.
+    """
     logger.info("Parsing haploblock boundaries")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
-    samples = (data_parser.parse_samples(samples_file)
-               if samples_file else data_parser.parse_samples_from_vcf(vcf))
     if not samples:
         logger.warning("No samples found; proceeding with empty sample list.")
-    logger.info("Found %d samples", len(samples))
+    samples = (data_parser.parse_samples(samples_file)
+               if samples_file else data_parser.parse_samples_from_vcf(vcf))
 
     # Worker count
     cpu_cores = cpu_count()
@@ -200,7 +205,12 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
         workers = cpu_cores
     logger.info("Using %d worker(s) (available cores: %d)", workers, cpu_cores)
 
-    # Per-haploblock variant processing
+    # Create output and temporary directories if they don't exist
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir = out_dir / "tmp"
+    (tmp_dir / "consensus_fasta").mkdir(parents=True, exist_ok=True)
+
+    # Generate phased sequences per haploblock
     haploblock2count = {}
     for (start, end) in haploblock_boundaries:
         logger.info("Processing haploblock %s-%s", start, end)
@@ -209,7 +219,6 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
         region_fasta = data_parser.extract_region_from_fasta(ref, chrom, start, end, out_dir)
 
         work = [(s, region_vcf, region_fasta, ref, out_dir) for s in samples]
-
         if workers == 1:
             results = [_process_sample_for_region(w) for w in work]
         else:
@@ -222,10 +231,11 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
         counts = [c for (_, c0, c1) in results for c in (c0, c1)]
         haploblock2count[(start, end)] = (
             float(numpy.mean(counts)) if counts else 0.0,
-            float(numpy.std(counts)) if counts else 0.0,
-        )
+            float(numpy.std(counts)) if counts else 0.0)
 
-    write_tsv_variant_counts(haploblock2count, out_dir)
+    variant_counts_to_TSV(haploblock2count, out_dir)
+    logger.info(f"Variant counts written to {out_dir}")
+
 
 
 # -------------------------------------------------------------------------
@@ -265,7 +275,7 @@ if __name__ == "__main__":
     parser.add_argument("--chr_map", type=pathlib.Path, required=True,
                         help="File with one chromosome number-to-name mapping per line (e.g., '6 chr6')")
     parser.add_argument("--chr", type=str, required=True,
-                        help='Chromosome number')
+                        help="Chromosome number")
     parser.add_argument("--out", type=pathlib.Path, required=True,
                         help="Output folder path")
     parser.add_argument("--samples", type=pathlib.Path, default=None,

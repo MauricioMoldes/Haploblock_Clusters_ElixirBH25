@@ -25,27 +25,27 @@ PARALLEL_THRESHOLD = 1000  # DEV only option Trigger parallelization when >1000 
 
 def _make_hash(i: int) -> str:
     """Helper function for multiprocessing."""
-    return numpy.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH)
+    hash = numpy.binary_repr(i, width=HAPLOBLOCK_HASH_LENGTH)
+    return(hash)
 
 
 def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int, int]]) -> dict[tuple[int, int], str]:
     """
-    Generate unique binary hashes for each haploblock boundary.
+    Generate unique binary hashes for haploblocks.
 
     Uses multiprocessing for large datasets to speed up hash generation.
 
-    Args:
-        haploblock_boundaries: List of (start, end) tuples.
+    arguments:
+    - haploblock_boundaries: List of (start, end) tuples
 
-    Returns:
-    - haploblock2hash: dict, key=(start, end), values=hash
+    returns:
+    - haploblock2hash: dict, key=(start, end), value=binary hash
     """
     n_haploblocks = len(haploblock_boundaries)
-    logger.info(f"Generating hashes for {n_haploblocks:,} haploblocks")
-
     if n_haploblocks == 0:
         logger.warning("No haploblocks provided.")
         return {}
+    logger.info(f"Generating hashes for {n_haploblocks:,} haploblocks")
 
     # Decide execution strategy
     if n_haploblocks > PARALLEL_THRESHOLD:
@@ -61,13 +61,14 @@ def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int, int]]) -> 
     return(haploblock2hash)
 
 
-def generate_cluster_hashes(clusters):
+def generate_cluster_hashes(clusters: pathlib.Path):
     """
-    Generate a unique binary hash for each cluster.
+    Generate unique binary hashes for clusters.
+
     Parallelization is not needed here — small overhead.
 
     arguments:
-    - clusters:
+    - clusters: pathlib.Path, path to clusters file generated with MMSeqs2
 
     returns:
     - cluster2hash: dict, key=clusterID, values=hash
@@ -84,11 +85,11 @@ def generate_variant_hashes(variants: List[str],
                             haploblock_boundaries: List[tuple],
                             samples: Optional[List[str]]) -> Dict[str, str]:
     """
-    Generate binary variant presence hashes for all samples and haplotypes
+    Generate unique binary hashes for variants of interest (if provided by user).
     
     arguments:
     - variants: list of string variant positions
-    - vcf:
+    - vcf: 
     - chrom
     - haploblock_boundaries:
     - samples:
@@ -149,8 +150,12 @@ def generate_variant_hashes(variants: List[str],
     return(variant2hash)
 
 
-def generate_individual_hash(individual, individual2cluster, cluster2hash,
-                             haploblock2hash, chr_hash, variant2hash=None):
+def generate_individual_hash(individual,
+                             individual2cluster,
+                             cluster2hash,
+                             haploblock2hash,
+                             chr_hash,
+                             variant2hash=None):
     """Generate hash string for a single individual."""
     strand = individual[-1]
     strand_hash = "0001" if strand == "0" else "0010"

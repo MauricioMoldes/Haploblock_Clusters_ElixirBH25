@@ -8,24 +8,25 @@ import data_parser
 logger = logging.getLogger(__name__)
 
 
-def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]], chrom: str, out_dir: pathlib.Path) -> None:
-    """Save haploblock boundaries to TSV file."""
+def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]],
+                       chrom: str,
+                       out_dir: pathlib.Path):
+    """Save haploblock boundaries to a TSV file."""
     output_file = out_dir / f"haploblock_boundaries_chr{chrom}.tsv"
     with output_file.open('w') as f:
         f.write("START\tEND\n")
         f.writelines(f"{start}\t{end}\n" for start, end in haploblock_boundaries)
 
 
-def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path) -> None:
+def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path):
     """
-    Modular function to generate haploblock boundaries.
-
-    Can be imported and called from another script/pipeline.
+    Generate haploblock boundaries. It is a modular function
+    that can be imported and called from another script/pipeline.
     """
     logger.info(f"Parsing recombination file: {recombination_file}")
     haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
 
-    # Ensure output directory exists
+    # Create output directory if it doesn't exist
     out_dir.mkdir(parents=True, exist_ok=True)
 
     haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
@@ -74,7 +75,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog=script_name,
-        description="Generate haploblock boundaries and hashes from recombination data."
+        description="Generate haploblock boundaries using a recombination map."
     )
     parser.add_argument('--recombination_file', type=pathlib.Path, required=True,
                         help='Path to recombination file (Halldorsson et al., 2019)')
