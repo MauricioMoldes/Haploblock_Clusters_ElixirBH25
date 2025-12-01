@@ -194,10 +194,10 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
     logger.info("Parsing samples")
-    if not samples:
-        logger.warning("No samples found; proceeding with empty sample list.")
     samples = (data_parser.parse_samples(samples_file)
                if samples_file else data_parser.parse_samples_from_vcf(vcf))
+    if not samples:
+        logger.warning("No samples found; proceeding with empty sample list.")
 
     # Worker count
     cpu_cores = cpu_count()
