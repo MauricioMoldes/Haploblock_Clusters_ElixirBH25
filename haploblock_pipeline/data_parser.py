@@ -330,7 +330,7 @@ def extract_region_from_fasta(fasta, chr, start, end, out):
     return(output_fasta)
 
 
-def parse_clusters(clusters_file):
+def parse_clusters(clusters_file, cluster_count):
     """
     Parses clusters TSV file from MMSeqs2 (no header) with 2 columns: representative, individual
     assign unique ids for each cluster.
@@ -355,7 +355,7 @@ def parse_clusters(clusters_file):
     individual2representative = {}
     individual2cluster = {}
     clusters = []
-    num_clusters = 0
+    num_clusters = cluster_count
     for line in f:
         split_line = line.rstrip().split('\t')
 

@@ -93,7 +93,7 @@ def filter_vcf(vcf: pathlib.Path, out_dir: pathlib.Path) -> pathlib.Path:
     filtered_vcf = out_dir / "tmp" / f"{vcf_name}.flt.vcf.gz"
     bcftools_log_file = out_dir / "tmp" / "log_bcftools.txt"  # file for BCFtools log messages
     
-    subprocess.run(["bcftools", "filter", "--IndelGap", "5", "-e", "'QUAL<40'", str(vcf), "-Ob", "-o", filtered_vcf],
+    subprocess.run(["bcftools", "filter", "--IndelGap", "5", "-e", "QUAL<40", str(vcf), "-Ob", "-o", filtered_vcf],
                     stdout=subprocess.PIPE,
                     stderr=open(bcftools_log_file, "a+"),
                     text=True,
