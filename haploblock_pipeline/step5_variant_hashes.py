@@ -232,8 +232,11 @@ def variant_hashes_to_TSV(variant2hash: Dict[str, str], out_dir: pathlib.Path) -
     logger.info(f"Variant hashes written to {out}")
 
 
-def individual_hashes_to_TSV(individual2hash: Dict[str, str], out_dir: pathlib.Path):
-    out = out_dir / "individual_hashes.tsv"
+def individual_hashes_to_TSV(individual2hash: Dict[str, str],
+                             start: int,
+                             end: int,
+                             out_dir: pathlib.Path):
+    out = out_dir / f"individual_hashes_{str(start)}-{str(end)}.tsv"
     with open(out, 'w') as f:
         f.write("INDIVIDUAL\tHASH\n")
         for individual, hash_val in individual2hash.items():
@@ -250,22 +253,12 @@ def run_hashes(boundaries_file: pathlib.Path,
                samples_file: Optional[pathlib.Path] = None,
                threads: Optional[int] = None):
 
+    chr_hash = numpy.binary_repr(int(chrom))
+
     logger.info("Generating haploblock hashes")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     haploblock2hash = generate_haploblock_hashes(haploblock_boundaries)
     haploblock_hashes_to_tsv(haploblock2hash, out)
-
-    logger.info("Generating cluster hashes")
-    individual2cluster = {}
-    clusters = []
-    for (start, end) in haploblock_boundaries:
-        cluster_file = out / "clusters" / f"chr{chrom}_{start}-{end}_cluster.tsv"
-        logger.info(f"Parsing {cluster_file}")
-        (individual2cluster, clusters) = data_parser.parse_clusters(cluster_file, len(clusters))
-        individual2cluster.update(individual2cluster)
-        clusters.extend(clusters)
-        cluster2hash = generate_cluster_hashes(clusters)
-        cluster_hashes_to_tsv(cluster2hash, start, end, out)
 
     variant2hash = None
     if variants_file:
@@ -276,14 +269,19 @@ def run_hashes(boundaries_file: pathlib.Path,
         variant2hash = generate_variant_hashes(variants, vcf, chrom, haploblock_boundaries, samples)
         variant_hashes_to_TSV(variant2hash, out)
 
-    logger.info("Generating individual hashes (parallelized)")
-    chr_hash = numpy.binary_repr(int(chrom))
-    max_workers = threads or (os.cpu_count() - 1 or 1)
-    individual2hash = generate_individual_hashes_parallel(
-        individual2cluster, cluster2hash, haploblock2hash, chr_hash, variant2hash, max_workers=max_workers
-    )
+    logger.info("Generating cluster hashes and individual hashes")
+    for (start, end) in haploblock_boundaries:
+        cluster_file = out / "clusters" / f"chr{chrom}_{start}-{end}_cluster.tsv"
+        (individual2cluster, clusters) = data_parser.parse_clusters(cluster_file, len(clusters))
+        cluster2hash = generate_cluster_hashes(clusters)
+        cluster_hashes_to_tsv(cluster2hash, start, end, out)
 
-    individual_hashes_to_TSV(individual2hash, out)
+        max_workers = threads or (os.cpu_count() - 1 or 1)
+        individual2hash = generate_individual_hashes_parallel(
+            individual2cluster, cluster2hash, haploblock2hash, chr_hash, variant2hash, max_workers=max_workers
+        )
+
+        individual_hashes_to_TSV(individual2hash, start, end, out)
 
 
 # ----------------------------------------------------------------------
