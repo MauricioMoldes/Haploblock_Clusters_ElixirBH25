@@ -239,7 +239,7 @@ def individual_hashes_to_TSV(individual2hash: Dict[str, str], out_dir: pathlib.P
 
 
 def run_hashes(boundaries_file: pathlib.Path,
-               clusters_file: pathlib.Path,
+               clusters_dir: pathlib.Path,
                chrom: str,
                out: pathlib.Path,
                variants_file: Optional[pathlib.Path] = None,
@@ -253,7 +253,12 @@ def run_hashes(boundaries_file: pathlib.Path,
     haploblock_hashes_to_tsv(haploblock2hash, out)
 
     logger.info("Generating cluster hashes")
-    (individual2cluster, clusters) = data_parser.parse_clusters(clusters_file)
+    individual2cluster = {}
+    clusters = []
+    for cluster_file in clusters_dir.glob("*_cluster.tsv"):
+        (individual2cluster, clusters) = data_parser.parse_clusters(cluster_file)
+        individual2cluster.update(individual2cluster)
+        clusters.extend(clusters)
     logger.info(f"Found {len(clusters)} clusters with {len(individual2cluster)} individuals")
     cluster2hash = generate_cluster_hashes(clusters)
     cluster_hashes_to_tsv(cluster2hash, out)
@@ -301,8 +306,8 @@ if __name__ == "__main__":
     )
     parser.add_argument('--boundaries_file', type=pathlib.Path, required=True,
                         help="TSV file with header (START\tEND) and 2 columns: start end")
-    parser.add_argument('--clusters', required=True, type=pathlib.Path,
-                        help='Path to clusters file generated with MMSeqs2')
+    parser.add_argument('--clusters_dir', required=True, type=pathlib.Path,
+                        help='Path to directory with cluster files generated with MMSeqs2')
     parser.add_argument('--chr', required=True, type=str, help='Chromosome number')
     parser.add_argument('--out', required=True, type=pathlib.Path,
                         help='Output folder path')
@@ -320,7 +325,7 @@ if __name__ == "__main__":
     try:
         run_hashes(
             boundaries_file=args.boundaries_file,
-            clusters_file=args.clusters,
+            clusters_dir=args.clusters_dir,
             chrom=args.chr,
             out=args.out,
             variants_file=args.variants,
@@ -332,10 +337,10 @@ if __name__ == "__main__":
         sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
         sys.exit(1)
 
-def run(boundaries_file, clusters_file, chr, out, variants_file, vcf, samples_file, threads):
+def run(boundaries_file, clusters_dir, chr, out, variants_file, vcf, samples_file, threads):
     run_hashes(
         pathlib.Path(boundaries_file),
-        pathlib.Path(clusters_file),
+        pathlib.Path(clusters_dir),
         str(chr),
         pathlib.Path(out),
         pathlib.Path(variants_file) if variants_file else None,

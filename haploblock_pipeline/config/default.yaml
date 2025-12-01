@@ -33,7 +33,7 @@ outputs:
   # Step 4
   merged_consensus_dir: out_dir/TNFa/haploblock_phased_seq_merged
   variant_counts: out_dir/TNFa/variant_counts.tsv
-  clusters: out_dir/TNFa/clusters/chr6_31480875-31598421_cluster.tsv
+  clusters_dir: out_dir/TNFa/clusters
 
   # Step 5
 
