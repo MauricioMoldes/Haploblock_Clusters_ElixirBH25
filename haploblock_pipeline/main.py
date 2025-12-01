@@ -97,7 +97,7 @@ def main():
 
             step5_variant_hashes.run(
                 boundaries_file=cfg["outputs"]["boundaries_file"],
-                clusters_dir=cfg["outputs"]["clusters"],
+                clusters_dir=cfg["outputs"]["clusters_dir"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),
                 variants_file=variants_file,
