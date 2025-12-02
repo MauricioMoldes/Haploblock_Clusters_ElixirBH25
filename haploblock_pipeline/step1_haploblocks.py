@@ -18,47 +18,43 @@ def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]],
         f.writelines(f"{start}\t{end}\n" for start, end in haploblock_boundaries)
 
 
-def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path):
+def run_haploblocks(recombination_file: pathlib.Path,
+                    chrom: str,
+                    out_dir: pathlib.Path,
+                    gpu: bool = False,
+                    gpu_id: int = 0):
     """
-    Generate haploblock boundaries. It is a modular function
-    that can be imported and called from another script/pipeline.
+    Generate haploblock boundaries.
+    GPU is optional (currently placeholder for future acceleration).
     """
+
     logger.info(f"Parsing recombination file: {recombination_file}")
-    haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
+    logger.info(f"GPU mode: {gpu} (gpu_id={gpu_id})")
+
+    # ------------------------------------------------------------------
+    # GPU ACCELERATION Perspective
+    # ------------------------------------------------------------------
+    if gpu:
+        try:
+            import cupy as cp
+            logger.info("CuPy detected. GPU acceleration is available.")
+        except Exception:
+            logger.warning("GPU was requested but CuPy is not available. Falling back to CPU.")
+            gpu = False
+
+    # ------------------------------------------------------------------
+    # CURRENTLY: always use CPU parsing (fast enough)
+    # ------------------------------------------------------------------
+    haploblock_boundaries = data_parser.parse_recombination_rates(
+        recombination_file,
+        chrom
+    )
 
     # Create output directory if it doesn't exist
     out_dir.mkdir(parents=True, exist_ok=True)
 
     haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
     logger.info(f"Haploblock boundaries written to {out_dir}")
-
-
-# -------------------------------------------------------------------------
-# CUDA Perspective (Optional, Commented Out)
-# -------------------------------------------------------------------------
-# For extremely large datasets and GPU-enabled environments, this
-# section shows how hashing could be performed on CUDA for massive speedups.
-#
-# from numba import cuda
-#
-# @cuda.jit
-# def generate_hashes_cuda(output, width):
-#     i = cuda.grid(1)
-#     if i < output.size:
-#         val = i
-#         for j in range(width):
-#             bit = (val >> (width - j - 1)) & 1
-#             output[i, j] = bit
-#
-# def generate_haploblock_hashes_cuda(n_blocks):
-#     import numpy as np
-#     output = np.zeros((n_blocks, HAPLOBLOCK_HASH_LENGTH), dtype=np.uint8)
-#     threads_per_block = 256
-#     blocks_per_grid = (n_blocks + (threads_per_block - 1)) // threads_per_block
-#     generate_hashes_cuda[blocks_per_grid, threads_per_block](output, HAPLOBLOCK_HASH_LENGTH)
-#     cuda.synchronize()
-#     return ["".join(str(bit) for bit in row) for row in output]
-# -------------------------------------------------------------------------
 
 
 # -------------------------------------------------------------------------
@@ -91,8 +87,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
 
-# Alias for pipeline
-def run(recombination_file, chr, out, threads=None):
+# -------------------------------------------------------------------------
+# Pipeline entry point
+# -------------------------------------------------------------------------
+def run(recombination_file, chr, out, threads=None, gpu=False, gpu_id=0):
     """
     Pipeline-compatible run function.
 
@@ -101,5 +99,13 @@ def run(recombination_file, chr, out, threads=None):
         chr: Chromosome number
         out: Output directory
         threads: Optional, not used in this step (kept for consistency)
+        gpu: Enable GPU mode
+        gpu_id: GPU device index
     """
-    run_haploblocks(pathlib.Path(recombination_file), str(chr), pathlib.Path(out))
+    run_haploblocks(
+        pathlib.Path(recombination_file),
+        str(chr),
+        pathlib.Path(out),
+        gpu=gpu,
+        gpu_id=gpu_id
+    )

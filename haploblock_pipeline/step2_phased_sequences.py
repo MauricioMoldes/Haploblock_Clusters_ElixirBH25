@@ -156,22 +156,59 @@ def variant_counts_to_TSV(haploblock2count: Dict[tuple, Tuple[float, float]], ou
 # -------------------------------------------------------------------------
 # Worker function for Pool
 # -------------------------------------------------------------------------
-def _process_sample_for_region(args):
-    """Worker: extract sample, normalize, filter and count variants, generate FASTAs."""
-    if args is None:
-        return None  # skip empty worker
+import cupy as cp
 
-    (sample, region_vcf, region_fasta, ref, out_dir) = args
+def _process_sample_for_region(args, gpu=False, gpu_id=0):
+    """Worker: extract sample, normalize, filter, count variants, generate FASTAs."""
+    if args is None:
+        return None
+
+    sample, region_vcf, region_fasta, ref, out_dir = args
+    logger.info("Processing sample %s on %s", sample, "GPU" if gpu else "CPU")
+
     try:
         sample_vcf = data_parser.extract_sample_from_vcf(region_vcf, sample, out_dir)
         normalized_vcf = normalize_vcf(sample_vcf, ref, out_dir)
         filtered_normalized_vcf = filter_vcf(normalized_vcf, out_dir)
-        (count_0, count_1) = count_variants(sample_vcf)
+
+        # ----------------------------
+        # Variant counting (GPU or CPU)
+        # ----------------------------
+        if gpu:
+            try:
+                # Load VCF GT field
+                result = subprocess.run(
+                    ["bcftools", "query", "-f", "[ %GT]", str(filtered_normalized_vcf)],
+                    capture_output=True, text=True, check=True
+                )
+                gt_tokens = [t for t in result.stdout.split() if t not in {".", "./.", ".|."}]
+
+                # Convert to GPU array
+                gt_array = cp.array(gt_tokens, dtype=object)
+
+                # Separate haplotypes (assume phased "|")
+                hap0 = cp.array([int(t.split("|")[0]) for t in gt_array])
+                hap1 = cp.array([int(t.split("|")[1]) for t in gt_array])
+
+                count_0 = int(cp.sum(hap0 == 1))
+                count_1 = int(cp.sum(hap1 == 1))
+
+            except Exception as e:
+                logger.warning("GPU variant counting failed: %s. Falling back to CPU.", e)
+                count_0, count_1 = count_variants(filtered_normalized_vcf)
+        else:
+            count_0, count_1 = count_variants(filtered_normalized_vcf)
+
+        # ----------------------------
+        # Consensus FASTA (CPU for bcftools)
+        # ----------------------------
         generate_consensus_fasta(region_fasta, filtered_normalized_vcf, out_dir)
-        return(sample, count_0, count_1)
+
+        return sample, count_0, count_1
+
     except Exception as e:
         logger.exception("Error processing sample %s: %s", sample, e)
-        return(sample, 0, 0)
+        return sample, 0, 0
 
 
 # -------------------------------------------------------------------------
@@ -184,35 +221,31 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
                          chrom: str,
                          out_dir: pathlib.Path,
                          samples_file: Optional[pathlib.Path] = None,
-                         workers: Optional[int] = None):
-    """
-    Generate haploblock phased sequences. It is a modular function
-    that can be imported and called from another script/pipeline.
-    """
+                         workers: Optional[int] = None,
+                         gpu: bool = False,
+                         gpu_id: int = 0):
+    """Generate haploblock phased sequences (CPU + GPU)."""
     logger.info("Parsing haploblock boundaries")
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
-    logger.info("Parsing samples")
     samples = (data_parser.parse_samples(samples_file)
                if samples_file else data_parser.parse_samples_from_vcf(vcf))
     if not samples:
         logger.warning("No samples found; proceeding with empty sample list.")
 
-    # Worker count
     cpu_cores = cpu_count()
     if not workers or workers <= 0:
         workers = cpu_cores
     logger.info("Using %d worker(s) (available cores: %d)", workers, cpu_cores)
+    logger.info("GPU mode: %s (gpu_id=%d)", gpu, gpu_id)
 
-    # Create output and temporary directories if they don't exist
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = out_dir / "tmp"
     (tmp_dir / "consensus_fasta").mkdir(parents=True, exist_ok=True)
 
-    # Generate phased sequences per haploblock
     haploblock2count = {}
-    for (start, end) in haploblock_boundaries:
+    for start, end in haploblock_boundaries:
         logger.info("Processing haploblock %s-%s", start, end)
 
         region_vcf = data_parser.extract_region_from_vcf(vcf, chrom, chr_map, start, end, out_dir)
@@ -220,18 +253,18 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
 
         work = [(s, region_vcf, region_fasta, ref, out_dir) for s in samples]
         if workers == 1:
-            results = [_process_sample_for_region(w) for w in work]
+            results = [_process_sample_for_region(w, gpu=gpu, gpu_id=gpu_id) for w in work]
         else:
+            from functools import partial
             with Pool(workers) as pool:
-                results = pool.map(_process_sample_for_region, work)
+                results = pool.map(partial(_process_sample_for_region, gpu=gpu, gpu_id=gpu_id), work)
 
-        # filter out None results if no samples
         results = [r for r in results if r is not None]
-
         counts = [c for (_, c0, c1) in results for c in (c0, c1)]
         haploblock2count[(start, end)] = (
             float(numpy.mean(counts)) if counts else 0.0,
-            float(numpy.std(counts)) if counts else 0.0)
+            float(numpy.std(counts)) if counts else 0.0
+        )
 
     variant_counts_to_TSV(haploblock2count, out_dir)
     logger.info(f"Variant counts written to {out_dir}")
@@ -241,7 +274,7 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
 # -------------------------------------------------------------------------
 # Pipeline entrypoint
 # -------------------------------------------------------------------------
-def run(boundaries_file, vcf, ref, chr_map, chr, out, samples_file, threads=None):
+def run(boundaries_file, vcf, ref, chr_map, chr, out, samples_file, threads=None, gpu=False, gpu_id=0):
     run_phased_sequences(
         pathlib.Path(boundaries_file),
         pathlib.Path(vcf),
@@ -251,6 +284,8 @@ def run(boundaries_file, vcf, ref, chr_map, chr, out, samples_file, threads=None
         pathlib.Path(out),
         pathlib.Path(samples_file) if samples_file else None,
         threads,
+        gpu=gpu,
+        gpu_id=gpu_id
     )
 
 

@@ -42,19 +42,14 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
 # ----------------------------------------------------------------------
 # Run clustering per FASTA
 # ----------------------------------------------------------------------
-def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction: float, cov_mode: int,
-                     chrom: str, start: str, end: str):
-
-    # Resolve EVERYTHING to absolute paths
+def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction: float,
+                     cov_mode: int, chrom: str, start: str, end: str,
+                     gpu: bool = False, gpu_id: int = None):
+    
     input_fasta = str(pathlib.Path(input_fasta).resolve())
+    output_prefix = str((pathlib.Path(out) / "clusters" / f"chr{chrom}_{start}-{end}").resolve())
+    tmp_dir = str((pathlib.Path(out) / "tmp").resolve())
 
-    output_prefix = pathlib.Path(out) / "clusters" / f"chr{chrom}_{start}-{end}"
-    output_prefix = str(output_prefix.resolve())
-
-    tmp_dir = pathlib.Path(out) / "tmp"
-    tmp_dir = str(tmp_dir.resolve())
-
-    # run MMSeqs2
     cmd = [
         "mmseqs", "easy-cluster",
         input_fasta,
@@ -65,6 +60,11 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction
         "--cov-mode", str(cov_mode),
         "--remove-tmp-files", "1"
     ]
+
+    if gpu:
+        cmd += ["--use-gpu", "1"]
+        if gpu_id is not None:
+            cmd += ["--gpu-id", str(gpu_id)]  # assign specific GPU if needed
 
     logger.debug("Running: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
@@ -79,7 +79,9 @@ def run_clusters(boundaries_file: pathlib.Path,
                  chrom: str,
                  out_dir: pathlib.Path,
                  cov_mode: int,
-                 threads: None):
+                 threads=None,
+                 gpu=False,
+                 gpu_id=None):
 
     # Create output and temporary directories if they don't exist
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -89,25 +91,30 @@ def run_clusters(boundaries_file: pathlib.Path,
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
     (haploblock2min_id, haploblock2cov_fraction) = calculate_mmseq_params(variant_counts_file)
-
+    
+    
     logger.info("Computing clusters with MMseqs2 using %s threads...", threads or "auto")
     max_workers = threads or max(1, os.cpu_count() - 1)
-    futures = []
+    
 
+    logger.info("Computing clusters with MMseqs2 using %s threads (GPU=%s, GPU_ID=%s)",
+                max_workers, gpu, gpu_id)
+    futures = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for start, end in haploblock_boundaries:
-            input_fasta = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
-            futures.append(
-                executor.submit(
-                    compute_clusters,
-                    str(input_fasta),
-                    str(out_dir),
-                    haploblock2min_id[(start, end)],
-                    haploblock2cov_fraction[(start, end)],
-                    cov_mode,
-                    chrom, start, end
-                )
+        futures = [
+            executor.submit(
+                compute_clusters,
+                str(merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"),
+                str(out_dir),
+                haploblock2min_id[(start, end)],
+                haploblock2cov_fraction[(start, end)],
+                cov_mode,
+                chrom, start, end,
+                gpu=gpu,
+                gpu_id=gpu_id
             )
+            for start, end in haploblock_boundaries
+        ]
 
         for fut in as_completed(futures):
             fut.result()  # propagate exceptions if any
