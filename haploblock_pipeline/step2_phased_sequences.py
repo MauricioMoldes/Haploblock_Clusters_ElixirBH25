@@ -156,7 +156,6 @@ def variant_counts_to_TSV(haploblock2count: Dict[tuple, Tuple[float, float]], ou
 # -------------------------------------------------------------------------
 # Worker function for Pool
 # -------------------------------------------------------------------------
-import cupy as cp
 
 def _process_sample_for_region(args, gpu=False, gpu_id=0):
     """Worker: extract sample, normalize, filter, count variants, generate FASTAs."""
@@ -175,6 +174,7 @@ def _process_sample_for_region(args, gpu=False, gpu_id=0):
         # Variant counting (GPU or CPU)
         # ----------------------------
         if gpu:
+            import cupy as cp
             try:
                 # Load VCF GT field
                 result = subprocess.run(
