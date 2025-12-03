@@ -174,33 +174,46 @@ def _process_sample_for_region(args, gpu=False, gpu_id=0):
         # Variant counting (GPU or CPU)
         # ----------------------------
         if gpu:
-            import cupy as cp
             try:
+                import cupy as cp
+
                 # Load VCF GT field
                 result = subprocess.run(
                     ["bcftools", "query", "-f", "[ %GT]", str(filtered_normalized_vcf)],
                     capture_output=True, text=True, check=True
                 )
-                gt_tokens = [t for t in result.stdout.split() if t not in {".", "./.", ".|."}]
+                tokens = [t for t in result.stdout.split() if t not in {".", "./.", ".|."}]
 
-                # Convert to GPU array
-                gt_array = cp.array(gt_tokens, dtype=object)
+                # CPU string split → numeric lists
+                hap0 = []
+                hap1 = []
+                for t in tokens:
+                    if "|" in t:
+                        a, b = t.split("|")
+                    elif "/" in t:
+                        a, b = t.split("/")
+                    else:
+                        continue
+                    hap0.append(int(a))
+                    hap1.append(int(b))
 
-                # Separate haplotypes (assume phased "|")
-                hap0 = cp.array([int(t.split("|")[0]) for t in gt_array])
-                hap1 = cp.array([int(t.split("|")[1]) for t in gt_array])
+                # Move to GPU
+                h0 = cp.asarray(hap0, dtype=cp.int8)
+                h1 = cp.asarray(hap1, dtype=cp.int8)
 
-                count_0 = int(cp.sum(hap0 == 1))
-                count_1 = int(cp.sum(hap1 == 1))
+                count_0 = int(cp.sum(h0))
+                count_1 = int(cp.sum(h1))
 
             except Exception as e:
                 logger.warning("GPU variant counting failed: %s. Falling back to CPU.", e)
                 count_0, count_1 = count_variants(filtered_normalized_vcf)
+
         else:
+            # CPU mode
             count_0, count_1 = count_variants(filtered_normalized_vcf)
 
         # ----------------------------
-        # Consensus FASTA (CPU for bcftools)
+        # Consensus FASTA (CPU)
         # ----------------------------
         generate_consensus_fasta(region_fasta, filtered_normalized_vcf, out_dir)
 

@@ -54,7 +54,9 @@ def main():
 
     logger.info(f"GPU enabled: {use_gpu} (gpu_id={gpu_id})")
 
-    # Install CuPy dynamically
+    """
+
+    # Install CuPy dynamically outside of container 
     if use_gpu:
         try:
             output = subprocess.check_output(["nvcc", "--version"], text=True)
@@ -75,7 +77,7 @@ def main():
             subprocess.check_call([sys.executable, "-m", "pip", "install", "cupy"])
         except Exception as e:
             logger.warning(f"Failed to install CuPy: {e}")
-
+    """
     # ----------------------------
     # Threads configuration
     # ----------------------------
@@ -121,8 +123,7 @@ def main():
                 input_dir=Path(cfg["outputs"]["step3_input"]),
                 output_dir=Path(cfg["outputs"]["step3_output"]),
                 threads=threads,
-                gpu=use_gpu,
-                gpu_id=gpu_id
+                gpu=use_gpu
             )
 
         # ---- STEP 4 ---------------------------------------------------------
