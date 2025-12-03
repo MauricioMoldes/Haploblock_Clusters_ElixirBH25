@@ -15,6 +15,7 @@ data/Halldorsson2019/*
 !data/haploblock_boundaries_chr6_random5.tsv
 !data/haploblock_boundaries_chr6_random10.tsv
 !data/haploblock_boundaries_chr6_TNFa.tsv
+!data/haploblock_boundaries_chr6_HLAA.tsv
 !data/haploblock_boundaries_chr6_heightGenes.tsv
 
 out*
