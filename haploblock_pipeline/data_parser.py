@@ -4,13 +4,16 @@ import pathlib
 
 import subprocess
 
+import scipy
+
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
 
 def parse_recombination_rates(recombination_file, chromosome):
     """
-    Parses recombination map from Halldorsson et al., 2019
+    Parses recombination map from Halldorsson et al., 2019,
+    use Gaussian smoothing to find high recombination rates:
 
     arguments:
     - recombination_file with 7-line header
@@ -25,8 +28,6 @@ def parse_recombination_rates(recombination_file, chromosome):
     haploblock_boundaries = []  # start at pos==1
     positions = []
     rates = []
-    high_rates = []
-    high_rates_positions = []
 
     try:
         f = open(recombination_file, 'r')
@@ -55,18 +56,18 @@ def parse_recombination_rates(recombination_file, chromosome):
     assert len(positions) == len(rates)
 
     # find positions with recombination rate > 10*avg
-    avg_rate = sum(rates) / len(rates)
+    recomb_rates_smoothed = scipy.ndimage.gaussian_filter1d(rates, sigma=5)
 
-    for i in range(len(rates)):
-        if rates[i] > 10 * avg_rate:
-            high_rates.append(rates[i])
+    high_rates_positions = []
+    for i in range(1, len(recomb_rates_smoothed)-1):
+        if recomb_rates_smoothed[i] > recomb_rates_smoothed[i-1] and recomb_rates_smoothed[i] > recomb_rates_smoothed[i+1]:
             high_rates_positions.append(positions[i])
     
     # add first haploblock
     haploblock_boundaries.append((1, high_rates_positions[0]))
     
-    for i in range(1, len(high_rates)):
-        start = high_rates_positions[i - 1]
+    for i in range(1, len(high_rates_positions)):
+        start = high_rates_positions[i-1]
         end = high_rates_positions[i]
         haploblock_boundaries.append((start, end))
     
@@ -81,6 +82,7 @@ def parse_recombination_rates(recombination_file, chromosome):
 def parse_haploblock_boundaries(boundaries_file):
     """
     Parses haploblock boundaries with header and 2 columns: start end
+    Use Gaussian smoothing to find high recombination rates
 
     arguments:
     - boundaries_file
