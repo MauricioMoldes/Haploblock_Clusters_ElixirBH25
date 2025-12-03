@@ -267,7 +267,7 @@ This formulation allows each haploblock to contribute through a learnable haplob
 
 ## Testing the pipeline
 
-We found 1399 haploblocks in chromosome 6. See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for these haploblock boundaries (high recombination rates defined as **rate > 10*average**).
+We found 1399 haploblocks in chromosome 6. See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for these haploblock boundaries (high recombination rates are selected based on Gaussian smoothing).
 
 We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for the CBH, PUR and GBR populations for the following genomic regions:
 - 10 random haploblocks of chromosome 6
