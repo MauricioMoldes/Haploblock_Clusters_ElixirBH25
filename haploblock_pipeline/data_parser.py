@@ -11,165 +11,151 @@ import cupy as cp
 # set up logger, using inherited config, in case we get called as a module
 logger = logging.getLogger(__name__)
 
-def parse_recombination_rates(recombination_file, chromosome, use_gpu: bool = False, gpu_id: int = 0):
+def parse_recombination_rates(
+        recombination_file,
+        chromosome,
+        use_gpu: bool = False,
+        gpu_id: int = 0):
     """
-    Parses recombination map from Halldorsson et al., 2019,
-    use Gaussian smoothing to find high recombination rates.
+    Parse recombination map and detect haploblock boundaries using CPU or GPU
+    with identical numerical behavior.
 
-    arguments:
-    - recombination_file with header lines (lines starting with '#')
-      and 5 columns per data line: Chr Begin End cMperMb cM
+    GPU uses cupyx.scipy.ndimage.gaussian_filter1d which exactly matches
+    scipy.ndimage.gaussian_filter1d.
 
-    - use_gpu: try to perform the smoothing and local-maximum detection on GPU (CuPy).
-    - gpu_id: integer GPU id (if CuPy is available).
-
-    returns:
-    - haploblock_boundaries: list of tuples with haploblock boundaries (start, end)
+    Arguments:
+    - recombination_file: Halldorsson et al. 2019 recombination map
+    - chromosome: "chrX" or "X" (auto-prefixed)
+    - use_gpu: enable GPU if possible (fallback to CPU automatically)
+    - gpu_id: GPU device index for CuPy
     """
+
+    # -------------------------------------------------------------
+    # Normalize chromosome name
+    # -------------------------------------------------------------
     if not str(chromosome).startswith("chr"):
         chromosome = "chr" + str(chromosome)
 
     positions = []
     rates = []
 
-    # Read file - line by line is memory friendly and matches original behavior
+    # -------------------------------------------------------------
+    # Read recombination file
+    # -------------------------------------------------------------
     try:
-        with open(recombination_file, 'r') as f:
+        with open(recombination_file, "r") as f:
             for line in f:
                 if line.startswith("#"):
                     continue
-                split_line = line.rstrip().split('\t')
-                if len(split_line) != 5:
-                    logger.error("Recombination file %s has bad line (not 5 tab-separated fields): %s",
-                                 recombination_file, line)
-                    raise Exception("Bad line in the recombination file")
-                (chr_field, start, end, rate, cM) = split_line
+                parts = line.rstrip().split("\t")
+                if len(parts) != 5:
+                    raise Exception(f"Bad line (expected 5 columns): {line}")
+
+                chr_field, start, end, rate, cm = parts
                 if chr_field == chromosome:
-                    try:
-                        positions.append(int(start))
-                        rates.append(float(rate))
-                    except ValueError:
-                        logger.error("Bad numeric values in line: %s", line)
-                        raise
+                    positions.append(int(start))
+                    rates.append(float(rate))
 
     except Exception as e:
-        logger.error("Opening or parsing provided recombination file %s: %s", recombination_file, e)
-        raise Exception("Cannot open/parse provided recombination file")
+        logger.error("Error reading recombination file %s: %s",
+                     recombination_file, e)
+        raise
 
+    # -------------------------------------------------------------
+    # Empty chromosome: nothing to do
+    # -------------------------------------------------------------
     if len(positions) == 0:
-        logger.warning("No positions found for chromosome %s in %s", chromosome, recombination_file)
+        logger.warning("No data for chromosome %s in file %s",
+                       chromosome, recombination_file)
         return []
 
-    # Convert to numpy arrays
     positions = np.array(positions, dtype=np.int64)
     rates = np.array(rates, dtype=np.float64)
-    n = rates.size
+    n = len(rates)
 
-    # If data is too short, avoid smoothing artifacts
+    # Very short: one haploblock
     if n < 5:
-        logger.info("Very short recombination map (n=%d) - returning single haploblock", n)
         return [(1, int(positions[-1]))]
 
-    # Smoothing parameters (match prior behavior: sigma=5 in index units)
-    sigma = 5.0
+    sigma = 5.0  # identical to original code
 
-    # Try GPU smoothing + local maxima detection when requested
+    # -------------------------------------------------------------
+    # Try GPU smoothing
+    # -------------------------------------------------------------
+    smoothed = None
+
     if use_gpu:
-        try:            
-            # optional cupyx for ndimage; but we'll implement a safe GPU smoothing using convolution
+        try:
+            import cupy as cp
+            import cupyx.scipy.ndimage as cpx_ndimage
+
+            # select GPU
             try:
                 cp.cuda.Device(gpu_id).use()
             except Exception:
-                logger.warning("Could not set GPU device to id %s; using default device.", gpu_id)
+                logger.warning("Cannot select GPU device %d", gpu_id)
 
-            # Build Gaussian kernel on GPU
-            kernel_radius = int(max(1, np.ceil(3 * sigma)))
-            kernel_x = cp.arange(-kernel_radius, kernel_radius + 1)
-            kernel = cp.exp(-0.5 * (kernel_x / float(sigma)) ** 2)
-            kernel = kernel / kernel.sum()
-
-            # Move rates to GPU and convolve (mode='same' equivalent)
             rates_gpu = cp.asarray(rates)
-            smoothed_gpu = cp.convolve(rates_gpu, kernel, mode='same')
 
-            # find local maxima on GPU
-            # create shifted arrays and compare
-            left = cp.empty_like(smoothed_gpu)
-            left[1:] = smoothed_gpu[:-1]
-            left[0] = -cp.inf
-            right = cp.empty_like(smoothed_gpu)
-            right[:-1] = smoothed_gpu[1:]
-            right[-1] = -cp.inf
+            # EXACT SciPy-equivalent behavior
+            smoothed_gpu = cpx_ndimage.gaussian_filter1d(
+                rates_gpu,
+                sigma=sigma,
+                mode="reflect"
+            )
 
-            maxima_mask = (smoothed_gpu > left) & (smoothed_gpu > right)
+            smoothed = cp.asnumpy(smoothed_gpu)
 
-            # bring maxima indices back to host
-            maxima_idx = cp.asnumpy(cp.nonzero(maxima_mask)[0])
-
-            # positions of maxima
-            high_rates_positions = positions[maxima_idx].tolist()
-
-            # if no peaks found, fallback to CPU smoothing (more robust in edge-cases)
-            if len(high_rates_positions) == 0:
-                logger.warning("No peaks detected on GPU smoothing - falling back to CPU smoothing.")
-                raise RuntimeError("No peaks on GPU smoothing")
-
-            # proceed to haploblocks creation below with high_rates_positions (already host list)
         except Exception as e:
-            # if anything fails with GPU path, fallback gracefully to CPU
-            logger.warning("GPU path failed (%s). Falling back to CPU.", e)
-            use_gpu = False  # ensure CPU path below
+            logger.warning("GPU filtering failed (%s). Falling back to CPU.", e)
+            smoothed = None  # continue to CPU path
 
-    # CPU fallback path (or initial path if not using GPU)
-    if not use_gpu:
-        # Use scipy's gaussian_filter1d which is robust and matches original code
-        try:
-            smoothed = scipy.ndimage.gaussian_filter1d(rates, sigma=sigma)
-        except Exception as e:
-            # As last resort, use numpy convolution with computed kernel
-            logger.warning("scipy.ndimage.gaussian_filter1d failed: %s. Using numpy convolution fallback.", e)
-            kernel_radius = int(max(1, np.ceil(3 * sigma)))
-            kernel_x = np.arange(-kernel_radius, kernel_radius + 1)
-            kernel = np.exp(-0.5 * (kernel_x / float(sigma)) ** 2)
-            kernel = kernel / kernel.sum()
-            smoothed = np.convolve(rates, kernel, mode='same')
+    # -------------------------------------------------------------
+    # CPU fallback
+    # -------------------------------------------------------------
+    if smoothed is None:
+        smoothed = scipy.ndimage.gaussian_filter1d(
+            rates, sigma=sigma, mode="reflect"
+        )
 
-        # detect strict local maxima (same logic as before)
-        # avoid endpoints as before
-        maxima_idx = []
-        # iterate in python to be explicit and safe for small arrays (arithmetic done index by index)
-        for i in range(1, n - 1):
-            if smoothed[i] > smoothed[i - 1] and smoothed[i] > smoothed[i + 1]:
-                maxima_idx.append(i)
+    # -------------------------------------------------------------
+    # Local maxima detection (identical logic CPU/GPU)
+    # -------------------------------------------------------------
+    maxima_idx = []
+    for i in range(1, n - 1):
+        if smoothed[i] > smoothed[i - 1] and smoothed[i] > smoothed[i + 1]:
+            maxima_idx.append(i)
 
-        high_rates_positions = positions[np.array(maxima_idx, dtype=int)].tolist()
-
-    # Safety: if we still don't have any peak, create coarse breakpoints:
-    if len(high_rates_positions) == 0:
-        logger.warning("No recombination peaks detected for chromosome %s; returning single haploblock.", chromosome)
+    if len(maxima_idx) == 0:
+        logger.warning("No recombination peaks on chromosome %s", chromosome)
         return [(1, int(positions[-1]))]
 
-    # Build haploblock boundaries using peaks as boundaries (mirrors original behavior)
-    haploblock_boundaries = []
+    high_positions = positions[np.array(maxima_idx)].tolist()
 
-    # ensure sorted
-    high_rates_positions = sorted(high_rates_positions)
+    # -------------------------------------------------------------
+    # Build haploblocks
+    # -------------------------------------------------------------
+    high_positions = sorted(high_positions)
+    haploblocks = []
 
-    # add first haploblock from 1 to first peak
-    haploblock_boundaries.append((1, int(high_rates_positions[0])))
+    # First block: 1 → first peak
+    haploblocks.append((1, int(high_positions[0])))
 
-    # intermediate haploblocks
-    for i in range(1, len(high_rates_positions)):
-        start = int(high_rates_positions[i - 1])
-        end = int(high_rates_positions[i])
-        haploblock_boundaries.append((start, end))
+    # Middle blocks
+    for i in range(1, len(high_positions)):
+        haploblocks.append((
+            int(high_positions[i - 1]),
+            int(high_positions[i])
+        ))
 
-    # last haploblock from last peak to last position
-    haploblock_boundaries.append((int(high_rates_positions[-1]), int(positions[-1])))
+    # Last block: last peak → last coordinate
+    haploblocks.append((
+        int(high_positions[-1]),
+        int(positions[-1])
+    ))
 
-    logger.info("Found %i haploblocks", len(haploblock_boundaries))
-
-    return haploblock_boundaries
+    logger.info("Found %d haploblocks", len(haploblocks))
+    return haploblocks
 
 
 def parse_haploblock_boundaries(boundaries_file):
