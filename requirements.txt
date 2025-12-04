@@ -1,3 +1,4 @@
 pyyaml
 numpy
-cupy-cuda12x==13.6.0
+cupy
+scipy

@@ -125,7 +125,7 @@ def run_clusters(boundaries_file: pathlib.Path,
 # ----------------------------------------------------------------------
 # Pipeline wrapper
 # ----------------------------------------------------------------------
-def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=0, threads=None):
+def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=0, threads=None, gpu=False, gpu_id=0 ):
     run_clusters(
         pathlib.Path(boundaries_file),
         pathlib.Path(merged_consensus_dir),
@@ -133,7 +133,9 @@ def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mod
         str(chr),
         pathlib.Path(out),
         cov_mode=cov_mode,
-        threads=threads
+        threads=threads,
+        gpu=False,
+        gpu_id=0
     )
 
 

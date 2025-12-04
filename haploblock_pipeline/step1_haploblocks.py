@@ -5,6 +5,7 @@ import argparse
 import pathlib
 import data_parser
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,29 +26,26 @@ def run_haploblocks(recombination_file: pathlib.Path,
                     gpu_id: int = 0):
     """
     Generate haploblock boundaries.
-    GPU is optional (currently placeholder for future acceleration).
+    GPU is optional (will be used if available).
     """
-
     logger.info(f"Parsing recombination file: {recombination_file}")
     logger.info(f"GPU mode: {gpu} (gpu_id={gpu_id})")
 
-    # ------------------------------------------------------------------
-    # GPU ACCELERATION Perspective
-    # ------------------------------------------------------------------
+    # Attempt to reserve the GPU early so we can report failure before heavy work.
     if gpu:
         try:
-            import cupy as cp
-            logger.info("CuPy detected. GPU acceleration is available.")
+            import cupy as cp  # noqa: F401
+            logger.info("CuPy detected. Will try GPU acceleration in parser.")
         except Exception:
             logger.warning("GPU was requested but CuPy is not available. Falling back to CPU.")
             gpu = False
 
-    # ------------------------------------------------------------------
-    # CURRENTLY: always use CPU parsing (fast enough)
-    # ------------------------------------------------------------------
+    # Parse (GPU will be attempted inside the function if requested)
     haploblock_boundaries = data_parser.parse_recombination_rates(
         recombination_file,
-        chrom
+        chrom,
+        use_gpu=gpu,
+        gpu_id=gpu_id
     )
 
     # Create output directory if it doesn't exist
