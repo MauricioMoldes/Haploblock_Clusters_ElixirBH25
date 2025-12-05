@@ -40,6 +40,17 @@ def generate_haploblock_hashes(haploblock_boundaries: list[tuple[int,int]]) -> d
 def generate_cluster_hashes(clusters: List[str]) -> dict:
     return {c: numpy.binary_repr(i, width=CLUSTER_HASH_LENGTH) for i,c in enumerate(clusters)}
 
+# CPU AND GPU sorted 
+"""
+def generate_cluster_hashes(clusters: List[str]) -> dict:
+    # Ensure deterministic ordering
+    clusters_sorted = sorted(clusters)
+
+    return {
+        c: numpy.binary_repr(i, width=CLUSTER_HASH_LENGTH)
+        for i, c in enumerate(clusters_sorted)
+    }
+"""
 def generate_variant_hashes(variants: List[str], vcf: pathlib.Path, chrom: str,
                             haploblock_boundaries: List[tuple], samples: Optional[List[str]]) -> Dict[str,str]:
     if not samples:
@@ -97,39 +108,200 @@ def generate_individual_hash(individual, individual2cluster, cluster2hash, haplo
 def generate_individual_hashes_parallel(individual2cluster, cluster2hash, haploblock2hash,
                                         chr_hash, variant2hash=None, max_workers=None,
                                         gpu: bool=False, gpu_id: Optional[int]=None):
-    haploblock2hash = {(str(s), str(e)): h for (s,e),h in haploblock2hash.items()}
-    individual2hash = {}
+    """
+    Build individual hashes in parallel; GPU-optimized batch implementation when gpu=True.
 
-    if gpu:
-        import cupy as cp
-        if gpu_id is not None:
-            cp.cuda.Device(gpu_id).use()  # set specific GPU device
-        chr_hash_arr = cp.array([int(b) for b in chr_hash], dtype=cp.uint8)
-        hap_hash_arr = {k: cp.array([int(b) for b in v], dtype=cp.uint8) for k,v in haploblock2hash.items()}
-        clus_hash_arr = {k: cp.array([int(b) for b in v], dtype=cp.uint8) for k,v in cluster2hash.items()}
-        variant_hash_arr = {k: cp.array([int(b) for b in v], dtype=cp.uint8) for k,v in (variant2hash or {}).items()}
+    Returns: dict {individual_name: bitstring}
+    """
+    # Normalize haploblock keys to string pairs, to match how keys are looked up
+    haploblock2hash = { (str(s), str(e)) if not isinstance(k, tuple) else (str(k[0]), str(k[1])): v
+                        for k, v in (haploblock2hash.items() if hasattr(haploblock2hash, "items") else haploblock2hash) }
 
-        for ind in individual2cluster:
-            strand = ind[-1]
-            strand_hash = cp.array([0,0,0,1] if strand=="0" else [0,0,1,0], dtype=cp.uint8)
-            region_str = ind.split("_")[3].replace(".fa","").replace(".fasta","").replace(".vcf","")
-            start, end = region_str.split("-")
-            h = cp.concatenate([strand_hash, chr_hash_arr, hap_hash_arr[(start,end)], clus_hash_arr[individual2cluster[ind]]])
-            if variant_hash_arr: h = cp.concatenate([h, variant_hash_arr[ind]])
-            individual2hash[ind] = "".join(h.get().astype(str))
+    # Quick return on empty
+    individuals = list(individual2cluster.keys())
+    N = len(individuals)
+    if N == 0:
+        return {}
+
+    # Decide CPU path early if not using GPU
+    if not gpu:
+        # CPU threaded fallback (keeps previous generate_individual_hash semantics)
+        max_workers = max_workers or (os.cpu_count()-1 or 1)
+        individual2hash = {}
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for ind in individuals:
+                futures.append(
+                    executor.submit(generate_individual_hash, ind, individual2cluster, cluster2hash,
+                                    haploblock2hash, chr_hash, variant2hash)
+                )
+            for fut in as_completed(futures):
+                ind, h = fut.result()
+                individual2hash[ind] = h
         return individual2hash
 
-    # CPU fallback
-    max_workers = max_workers or (os.cpu_count()-1 or 1)
-    futures=[]
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for ind in individual2cluster:
-            futures.append(executor.submit(generate_individual_hash, ind, individual2cluster, cluster2hash,
-                                           haploblock2hash, chr_hash, variant2hash))
-        for fut in as_completed(futures):
-            ind,h = fut.result()
-            individual2hash[ind]=h
-    return individual2hash
+    # ---- GPU path (batched) ----
+    try:
+        import cupy as cp
+        # set device if provided
+        if gpu_id is not None:
+            try:
+                cp.cuda.Device(gpu_id).use()
+            except Exception as e:
+                logger.warning("Could not set CuPy device %s: %s (using default)", gpu_id, e)
+
+        # Convert chr_hash to bit array
+        chr_bits = [int(b) for b in str(chr_hash)]
+        chr_len = len(chr_bits)
+        chr_arr = cp.array(chr_bits, dtype=cp.uint8)  # shape (chr_len,)
+
+        # Prepare haploblock hashes map -> cp arrays
+        # Ensure all hap hashes have same length
+        sample_hap = next(iter(haploblock2hash.values()))
+        hap_len = len(sample_hap)
+        hap_hash_map = {}
+        for k, v in haploblock2hash.items():
+            if len(v) != hap_len:
+                raise ValueError("Inconsistent haploblock hash lengths")
+            hap_hash_map[k] = cp.array([int(b) for b in v], dtype=cp.uint8)
+
+        # Prepare cluster hash map
+        sample_cl = next(iter(cluster2hash.values())) if len(cluster2hash) > 0 else "0"*CLUSTER_HASH_LENGTH
+        clus_len = len(sample_cl)
+        clus_hash_map = {k: cp.array([int(b) for b in v], dtype=cp.uint8) for k, v in cluster2hash.items()}
+
+        # Variant hashes (may be None). Determine variant length if present
+        var_len = 0
+        var_hash_map = {}
+        if variant2hash:
+            # variant2hash keys may not map 1:1 to individuals; treat missing per-individual as zeros
+            sample_var = next(iter(variant2hash.values()))
+            var_len = len(sample_var)
+            for k, v in variant2hash.items():
+                if len(v) != var_len:
+                    raise ValueError("Inconsistent variant hash lengths")
+                var_hash_map[k] = cp.array([int(b) for b in v], dtype=cp.uint8)
+
+        # total length and allocation
+        strand_len = 4
+        total_len = strand_len + chr_len + hap_len + clus_len + var_len
+
+        # allocate full array on GPU
+        full_gpu = cp.zeros((N, total_len), dtype=cp.uint8)
+
+        # Build strand array (N x 4)
+        # rule from original: strand = individual[-1]; strand_hash = "0001" if strand=="0" else "0010"
+        strand_arr = cp.zeros((N, strand_len), dtype=cp.uint8)
+        # fill by indices
+        strand0_idx = [i for i, ind in enumerate(individuals) if ind[-1] == "0"]
+        strand1_idx = [i for i, ind in enumerate(individuals) if ind[-1] != "0"]
+        if len(strand0_idx) > 0:
+            strand_arr[cp.array(strand0_idx, dtype=cp.int64), :] = cp.array([0,0,0,1], dtype=cp.uint8)
+        if len(strand1_idx) > 0:
+            strand_arr[cp.array(strand1_idx, dtype=cp.int64), :] = cp.array([0,0,1,0], dtype=cp.uint8)
+
+        # place strand
+        off = 0
+        full_gpu[:, off:off+strand_len] = strand_arr
+        off += strand_len
+
+        # place chr hash repeated for all individuals
+        # tile chr_arr to (N, chr_len)
+        full_gpu[:, off:off+chr_len] = cp.tile(chr_arr[cp.newaxis, :], (N, 1))
+        off += chr_len
+
+        # Build hap hash per individual: need hap key for each individual
+        # parse region like original: region_str = individual.split("_")[3] ...
+        hap_matrix = cp.zeros((N, hap_len), dtype=cp.uint8)
+        for i, ind in enumerate(individuals):
+            try:
+                region_str = ind.split("_")[3].replace(".fa","").replace(".fasta","").replace(".vcf","")
+                s, e = region_str.split("-")
+                key = (str(s), str(e))
+                if key not in hap_hash_map:
+                    # attempt reverse-int keys maybe present as ints
+                    key_alt = (str(int(s)), str(int(e)))
+                    if key_alt in hap_hash_map:
+                        key = key_alt
+                    else:
+                        raise KeyError(key)
+                hap_matrix[i, :] = hap_hash_map[key]
+            except Exception as ex:
+                raise RuntimeError(f"Cannot determine haploblock hash for individual '{ind}': {ex}")
+
+        full_gpu[:, off:off+hap_len] = hap_matrix
+        off += hap_len
+
+        # Build cluster hash per individual
+        clus_matrix = cp.zeros((N, clus_len), dtype=cp.uint8)
+        for i, ind in enumerate(individuals):
+            clus_name = individual2cluster[ind]
+            if clus_name not in clus_hash_map:
+                raise KeyError(f"Cluster '{clus_name}' missing from cluster2hash")
+            clus_matrix[i, :] = clus_hash_map[clus_name]
+
+        full_gpu[:, off:off+clus_len] = clus_matrix
+        off += clus_len
+
+        # Variant hash: fill from variant2hash map if provided, otherwise leave zeros
+        if var_len > 0:
+            var_matrix = cp.zeros((N, var_len), dtype=cp.uint8)
+            # variant2hash keys were previously formatted as f"{sample}_chr{chrom}_region_{start}-{end}_hap{h}"
+            # we expect variant2hash keys to match individual names, otherwise try match by prefix
+            for i, ind in enumerate(individuals):
+                # prefer exact key match
+                if ind in var_hash_map:
+                    var_matrix[i, :] = var_hash_map[ind]
+                else:
+                    # fallback: try to find any variant key that startswith the sample id
+                    # sample id is first token before first '_'
+                    sample = ind.split("_")[0]
+                    matched = None
+                    for k in var_hash_map:
+                        if k.startswith(sample + "_"):
+                            matched = k
+                            break
+                    if matched:
+                        var_matrix[i, :] = var_hash_map[matched]
+                    else:
+                        # leave zeros if no variant vector found for individual
+                        pass
+            full_gpu[:, off:off+var_len] = var_matrix
+            off += var_len
+
+        # Sanity: off should equal total_len
+        if off != total_len:
+            raise RuntimeError("Internal error: computed offsets mismatch")
+
+        # Transfer to host once
+        full_numpy = cp.asnumpy(full_gpu)  # shape (N, total_len), dtype uint8
+
+        # Convert each row to bitstring (list comprehension is reasonably fast)
+        individual2hash = {}
+        for i, ind in enumerate(individuals):
+            row = full_numpy[i]
+            # faster join: map to characters and join
+            s = "".join(map(str, row.tolist()))
+            individual2hash[ind] = s
+
+        return individual2hash
+
+    except Exception as e:
+        logger.warning("GPU batch hashing failed (%s). Falling back to CPU threaded implementation.", e)
+        # Fall back to CPU threaded implementation
+        max_workers = max_workers or (os.cpu_count()-1 or 1)
+        individual2hash = {}
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for ind in individuals:
+                futures.append(
+                    executor.submit(generate_individual_hash, ind, individual2cluster, cluster2hash,
+                                    haploblock2hash, chr_hash, variant2hash)
+                )
+            for fut in as_completed(futures):
+                ind, h = fut.result()
+                individual2hash[ind] = h
+        return individual2hash
 
 def run_hashes(boundaries_file: pathlib.Path, clusters_dir: pathlib.Path, chrom: str, out: pathlib.Path,
                variants_file: Optional[pathlib.Path]=None, vcf: Optional[pathlib.Path]=None,

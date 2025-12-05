@@ -60,11 +60,9 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction
         "--cov-mode", str(cov_mode),
         "--remove-tmp-files", "1"
     ]
-
+        
     if gpu:
-        cmd += ["--use-gpu", "1"]
-        if gpu_id is not None:
-            cmd += ["--gpu-id", str(gpu_id)]  # assign specific GPU if needed
+        cmd += ["--gpu", "1"]        
 
     logger.debug("Running: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
@@ -134,7 +132,7 @@ def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mod
         pathlib.Path(out),
         cov_mode=cov_mode,
         threads=threads,
-        gpu=False,
+        gpu=gpu,
         gpu_id=0
     )
 
