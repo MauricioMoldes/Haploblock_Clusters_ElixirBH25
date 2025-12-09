@@ -299,7 +299,7 @@ def extract_sample_from_vcf(vcf, sample, out):
                     "--force-samples",  # only warn about unknown subset samples
                     "-s", sample,
                     "-o", output_vcf,
-                    vcf],
+                    str(vcf)],
                     check=True)
 
     subprocess.run(["bcftools", "index",
