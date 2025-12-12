@@ -9,6 +9,8 @@
 pipeline:
   step: all          # Options: 1, 2, 3, 4, 5, or "all"
   threads: auto      # Number of threads (auto = use CPU count - 1)
+  gpu: false         # enable or disable GPU usage 
+  gpu_id: 0          # optional GPU index
 
 data:
   recombination_file: data/Halldorsson2019/aau1043_datas3
