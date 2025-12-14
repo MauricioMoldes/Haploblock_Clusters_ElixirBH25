@@ -53,31 +53,8 @@ def main():
         use_gpu = False
 
     logger.info(f"GPU enabled: {use_gpu} (gpu_id={gpu_id})")
-
-    """
-
-    # Install CuPy dynamically outside of container 
-    if use_gpu:
-        try:
-            output = subprocess.check_output(["nvcc", "--version"], text=True)
-            match = re.search(r"release (\d+)\.(\d+)", output)
-            if match:
-                major, minor = match.groups()
-                cupy_pkg = f"cupy-cuda{major}x"
-                logger.info(f"Detected CUDA {major}.{minor}, installing {cupy_pkg}")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", cupy_pkg])
-            else:
-                logger.warning("CUDA not detected properly, installing CPU CuPy")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "cupy"])
-        except FileNotFoundError:
-            logger.warning("nvcc not found, installing CPU CuPy")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "cupy"])
-    else:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "cupy"])
-        except Exception as e:
-            logger.warning(f"Failed to install CuPy: {e}")
-    """
+        
+   
     # ----------------------------
     # Threads configuration
     # ----------------------------
@@ -95,9 +72,9 @@ def main():
                 recombination_file=cfg["data"]["recombination_file"],
                 chr=cfg["chromosome"]["number"],
                 out=cfg["outputs"]["out_dir"],
-                threads=threads,
-                gpu=use_gpu,
-                gpu_id=gpu_id
+                threads=threads
+                #gpu=use_gpu, # CPU only for now 
+                #gpu_id=gpu_id
             )
 
         # ---- STEP 2 ---------------------------------------------------------
