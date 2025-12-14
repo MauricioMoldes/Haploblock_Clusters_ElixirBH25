@@ -13,18 +13,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------
 # Recombination map parsing (MAIN CPU HOTSPOT – optimized)
 # ---------------------------------------------------------------------
-
-
 def parse_recombination_rates(recombination_file, chromosome):
+    """
+    Fast CPU-optimized parsing of Halldorsson2019 recombination map.
+    Returns list of (start, end) tuples.
+    """
     if not chromosome.startswith("chr"):
         chromosome = f"chr{chromosome}"
 
-    # Maximum CPU efficiency: generator → NumPy array
     data = np.fromiter(
         ((int(line[1]), float(line[3]))
          for line in map(str.split, open(recombination_file))
          if not line[0].startswith("#") and line[0] != "Chr" and line[0] == chromosome),
-        dtype=[('start','i8'), ('rate','f8')]
+        dtype=[('start', 'i8'), ('rate', 'f8')]
     )
 
     positions = data['start']
@@ -56,15 +57,15 @@ def parse_recombination_rates(recombination_file, chromosome):
 # Simple TSV parsers
 # ---------------------------------------------------------------------
 def parse_haploblock_boundaries(boundaries_file):
+    """
+    Parses haploblock boundaries TSV (header: START\tEND)
+    Returns integer tuples.
+    """
     with open(boundaries_file) as f:
         header = next(f)
         if not header.startswith("START\t"):
             raise ValueError("Boundaries file missing header")
-
-        return [
-            tuple(map(int, line.rstrip().split("\t")))
-            for line in f
-        ]
+        return [tuple(map(int, line.rstrip().split("\t"))) for line in f]
 
 
 def parse_samples(samples_file):
@@ -108,7 +109,7 @@ def parse_variants_of_interest(variants_file):
 
 
 # ---------------------------------------------------------------------
-# VCF / FASTA extraction (I/O bound, unchanged logic)
+# VCF / FASTA extraction (unchanged, I/O bound)
 # ---------------------------------------------------------------------
 def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
     if chr.startswith("chr"):
@@ -127,7 +128,6 @@ def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
          "-o", temp_vcf],
         check=True,
     )
-
     subprocess.run(["bcftools", "index", temp_vcf], check=True)
 
     output_vcf = tmp_dir / f"chr{chr}_region_{start}-{end}.vcf"
@@ -136,7 +136,6 @@ def extract_region_from_vcf(vcf, chr, chr_map, start, end, out):
         stdout=open(output_vcf, "w"),
         check=True,
     )
-
     subprocess.run(["bgzip", output_vcf], check=True)
     subprocess.run(
         ["bcftools", "index", "-c", output_vcf.with_suffix(".vcf.gz")],
@@ -160,7 +159,6 @@ def extract_sample_from_vcf(vcf, sample, out):
          str(vcf)],
         check=True,
     )
-
     subprocess.run(["bcftools", "index", output_vcf], check=True)
     return output_vcf
 
@@ -192,12 +190,10 @@ def parse_clusters(clusters_file):
     with open(clusters_file) as f:
         for line in f:
             rep, indiv = line.rstrip().split("\t")
-
             if rep not in representative2cluster:
                 representative2cluster[rep] = next_cluster
                 clusters.append(next_cluster)
                 next_cluster += 1
-
             individual2cluster[indiv] = representative2cluster[rep]
 
     return individual2cluster, clusters
