@@ -1,4 +1,3 @@
-root@8017e79641a2:/app/Haploblock_Clusters_ElixirBH25/haploblock_pipeline# cat step5_variant_hashes.py 
 #!/usr/bin/env python3
 import os
 import logging
