@@ -267,15 +267,13 @@ This formulation allows each haploblock to contribute through a learnable haplob
 
 ## Testing the pipeline
 
-We found 1399 haploblocks in chromosome 6. See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for these haploblock boundaries (high recombination rates are selected based on Gaussian smoothing).
+We found 2,288 haploblocks in chromosome 6 for 26 populations in the 1000 Genomes Project (2,548 individuals). See [haploblock_boundaries_chr6.tsv](data/haploblock_boundaries_chr6.tsv) for these haploblock boundaries (high recombination rates are selected based on Gaussian smoothing).
 
-We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for the CBH, PUR and GBR populations for the following genomic regions:
-- 10 random haploblocks of chromosome 6
+We generated haploblock phased sequences (format: sample_chr_region_start-end_hap0/1.fa) for the CBH, PUR and GBR populations and then for the full set of 26 populations from the 1000 Genomes
+Project for the following genomic regions:
 - 5 random haploblocks of chromosome 6
 - the haploblocks overlapping with TNFa
-- the haploblocks overlapping with genes related to human height
-
-+ haploblock phased sequences and haploblock hashes for TNFa for all populations
+- the haploblocks overlapping with HLA-A
 
 
 # System requirements
