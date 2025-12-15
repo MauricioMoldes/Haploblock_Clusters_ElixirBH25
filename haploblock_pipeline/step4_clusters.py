@@ -120,7 +120,7 @@ def run_clusters(boundaries_file: pathlib.Path,
 # ----------------------------------------------------------------------
 # Pipeline wrapper
 # ----------------------------------------------------------------------
-def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=0, threads=None):
+def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=2, threads=None):
     run_clusters(
         pathlib.Path(boundaries_file),
         pathlib.Path(merged_consensus_dir),
