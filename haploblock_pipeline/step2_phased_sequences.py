@@ -231,6 +231,10 @@ def run_phased_sequences(boundaries_file: pathlib.Path,
 # CLI wrapper
 # -------------------------------------------------------------------------
 def run(boundaries_file, vcf, ref, chr_map, chr, out, samples_file, threads=None, gpu=False, gpu_id=0):
+
+    # Force CPU
+    gpu = False
+    
     run_phased_sequences(
         pathlib.Path(boundaries_file),
         pathlib.Path(vcf),
