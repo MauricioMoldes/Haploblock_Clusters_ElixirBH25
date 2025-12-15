@@ -3,103 +3,72 @@ import sys
 import logging
 import argparse
 import pathlib
+
 import data_parser
 
 logger = logging.getLogger(__name__)
 
 
-def haploblocks_to_tsv(haploblock_boundaries: list[tuple[int, int]],
-                       chrom: str,
-                       out_dir: pathlib.Path):
-    """Save haploblock boundaries to a TSV file."""
-    output_file = out_dir / f"haploblock_boundaries_chr{chrom}.tsv"
-    with output_file.open('w') as f:
-        f.write("START\tEND\n")
-        f.writelines(f"{start}\t{end}\n" for start, end in haploblock_boundaries)
-
-
-def run_haploblocks(recombination_file: pathlib.Path, chrom: str, out_dir: pathlib.Path):
-    """
-    Generate haploblock boundaries. It is a modular function
-    that can be imported and called from another script/pipeline.
-    """
-    logger.info(f"Parsing recombination file: {recombination_file}")
-    haploblock_boundaries = data_parser.parse_recombination_rates(recombination_file, chrom)
-
-    # Create output directory if it doesn't exist
+def haploblocks_to_tsv(haploblocks, chrom, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
+    output_file = out_dir / f"haploblock_boundaries_chr{chrom}.tsv"
 
-    haploblocks_to_tsv(haploblock_boundaries, chrom, out_dir)
-    logger.info(f"Haploblock boundaries written to {out_dir}")
-
-
-# -------------------------------------------------------------------------
-# CUDA Perspective (Optional, Commented Out)
-# -------------------------------------------------------------------------
-# For extremely large datasets and GPU-enabled environments, this
-# section shows how hashing could be performed on CUDA for massive speedups.
-#
-# from numba import cuda
-#
-# @cuda.jit
-# def generate_hashes_cuda(output, width):
-#     i = cuda.grid(1)
-#     if i < output.size:
-#         val = i
-#         for j in range(width):
-#             bit = (val >> (width - j - 1)) & 1
-#             output[i, j] = bit
-#
-# def generate_haploblock_hashes_cuda(n_blocks):
-#     import numpy as np
-#     output = np.zeros((n_blocks, HAPLOBLOCK_HASH_LENGTH), dtype=np.uint8)
-#     threads_per_block = 256
-#     blocks_per_grid = (n_blocks + (threads_per_block - 1)) // threads_per_block
-#     generate_hashes_cuda[blocks_per_grid, threads_per_block](output, HAPLOBLOCK_HASH_LENGTH)
-#     cuda.synchronize()
-#     return ["".join(str(bit) for bit in row) for row in output]
-# -------------------------------------------------------------------------
+    with output_file.open("w") as f:
+        f.write("START\tEND\n")
+        for start, end in haploblocks:
+            f.write(f"{start}\t{end}\n")
 
 
-# -------------------------------------------------------------------------
-# CLI wrapper for standalone execution
-# -------------------------------------------------------------------------
-if __name__ == "__main__":
-    script_name = pathlib.Path(sys.argv[0]).name
+def run_haploblocks(recombination_file, chrom, out_dir):
+    logger.info("Parsing recombination file %s (chr %s)", recombination_file, chrom)
 
+    haploblocks = data_parser.parse_recombination_rates(
+        recombination_file, chrom
+    )
+
+    haploblocks_to_tsv(haploblocks, chrom, out_dir)
+    logger.info("Wrote haploblock boundaries to %s", out_dir)
+
+
+# ---------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------
+def main():
     logging.basicConfig(
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        level=logging.DEBUG,
+        level=logging.INFO,
     )
 
     parser = argparse.ArgumentParser(
-        prog=script_name,
-        description="Generate haploblock boundaries using a recombination map."
+        description="Generate haploblock boundaries from recombination maps"
     )
-    parser.add_argument('--recombination_file', type=pathlib.Path, required=True,
-                        help='Path to recombination file (Halldorsson et al., 2019)')
-    parser.add_argument('--chr', type=str, required=True, help='Chromosome number')
-    parser.add_argument('--out', type=pathlib.Path, required=True, help='Output folder path')
+    parser.add_argument(
+        "--recombination_file",
+        type=pathlib.Path,
+        required=True,
+    )
+    parser.add_argument("--chr", required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
 
     args = parser.parse_args()
 
     try:
         run_haploblocks(args.recombination_file, args.chr, args.out)
     except Exception as e:
-        sys.stderr.write(f"ERROR in {script_name}: {repr(e)}\n")
+        logger.exception("Haploblock generation failed")
         sys.exit(1)
 
 
-# Alias for pipeline
+# Pipeline alias
 def run(recombination_file, chr, out, threads=None):
-    """
-    Pipeline-compatible run function.
+    run_haploblocks(
+        pathlib.Path(recombination_file),
+        str(chr),
+        pathlib.Path(out),
+    )
 
-    Arguments:
-        recombination_file: Path to recombination file
-        chr: Chromosome number
-        out: Output directory
-        threads: Optional, not used in this step (kept for consistency)
-    """
-    run_haploblocks(pathlib.Path(recombination_file), str(chr), pathlib.Path(out))
+
+if __name__ == "__main__":
+    main()
+

@@ -32,10 +32,12 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
 
         for line in f:
             start, end, mean, stdev = line.strip().split("\t")
-            hap_len = int(end) - int(start)
+            start = int(start)
+            end = int(end)
+            hap_len = end - start
             haploblock2min_id[(start, end)] = 1 - (float(mean) / hap_len)
             haploblock2cov_fraction[(start, end)] = 1 - (682 / hap_len)
-
+        
     return(haploblock2min_id, haploblock2cov_fraction)
 
 
@@ -165,3 +167,4 @@ if __name__ == "__main__":
         cov_mode=args.cov_mode,
         threads=args.threads
     )
+
