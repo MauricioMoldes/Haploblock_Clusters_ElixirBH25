@@ -111,9 +111,7 @@ def main():
                 variant_counts=cfg["outputs"]["variant_counts"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),
-                threads=threads,
-                gpu=use_gpu,
-                gpu_id=gpu_id
+                threads=threads
             )
 
         # ---- STEP 5 ---------------------------------------------------------
