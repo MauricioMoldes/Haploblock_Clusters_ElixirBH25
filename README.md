@@ -45,6 +45,29 @@ Optional arguments:
 --step <1|2|3|4|5|all> : Execute only a specific pipeline step (default: 'all')
 ```
 
+## GPU Acceleration for Hashing
+
+By default, GPU acceleration is disabled (`gpu: false`).
+
+To enable GPU acceleration for hashing, you must modify the pipeline configuration [config/default.yaml](haploblock_pipeline/config/default.yaml).
+
+### Steps
+
+1. Enter the running container.
+2. Open the pipeline configuration file.
+3. Set the `gpu` flag to `true`.
+
+### Example Configuration
+
+```
+pipeline:
+  step: all           # Options: 1, 2, 3, 4, 5, or "all"
+  threads: auto       # Number of threads (auto = CPU count - 1)
+  gpu: true           # Enable or disable GPU usage
+  gpu_id: 0           # Optional GPU index
+```
+
+
 The pipeline can be also run in the non-interactive mode:
 ```
 docker run --rm \
@@ -53,6 +76,10 @@ docker run --rm \
     haploblock-pipeline \
     python3 main.py --config config/default.yaml
 ```
+
+
+
+
 
 
 ## Run the pipeline step-by-step
