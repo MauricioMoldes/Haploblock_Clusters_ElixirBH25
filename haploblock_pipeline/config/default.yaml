@@ -23,7 +23,7 @@ data:
 outputs:
   # Base output directory for all steps
   out_dir: out_dir/TNFa/
-  boundaries_file: data/haploblock_boundaries_chr6_TNFa.tsv
+  boundaries_file: out_dir/haploblock_boundaries_chr6_TNFa.tsv
 
   # Step 2
   step2_out: out_dir/TNFa
