@@ -2,6 +2,7 @@
 import os
 import logging
 import pathlib
+import subprocess
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -57,6 +58,76 @@ def generate_cluster_hashes(clusters: list[int], use_gpu=False):
     else:
         cluster2hash = {cluster: np.binary_repr(i, width=CLUSTER_HASH_LENGTH) for i, cluster in enumerate(clusters)}
     return cluster2hash
+
+def generate_variant_hashes(variants: List[str],
+                            vcf: pathlib.Path,
+                            chrom: str,
+                            haploblock_boundaries: List[tuple],
+                            samples: Optional[List[str]]) -> Dict[str, str]:
+    """
+    Generate binary variant presence hashes for all samples and haplotypes
+    
+    arguments:
+    - variants: list of string variant positions
+    - vcf:
+    - chrom
+    - haploblock_boundaries:
+    - samples:
+
+    returns:
+    - variant2hash: dict, key=individual, values=hash
+
+    """
+    if not samples:
+        logger.warning("No samples provided for variant hash generation. Returning empty dict.")
+        return {}
+
+    first_pos = variants[0]
+
+    # find region containing first variant
+    start = end = None
+    for (s, e) in haploblock_boundaries:
+        if int(s) <= int(first_pos) <= int(e):
+            start, end = s, e
+            break
+
+    if start is None:
+        raise ValueError(f"Variant {first_pos} not found in any haploblock")
+
+    idx_map = {str(v): i for i, v in enumerate(variants)}
+    variant2hash = {
+        f"{sample}_chr{chrom}_region_{start}-{end}_hap{h}": ["0"] * len(variants)
+        for sample in samples for h in (0, 1)
+    }
+
+    region = f"{chrom}:{first_pos}-{end}"
+    result = subprocess.run(
+        ["bcftools", "query", "-f", "%CHROM\t%POS[\t%GT]\n",
+         "-s", ",".join(samples), "--force-samples", "-r", region, str(vcf)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    for line in result.stdout.splitlines():
+        _, pos, *gts = line.split("\t")
+        if pos not in idx_map:
+            continue
+
+        i = idx_map[pos]
+        for sample_idx, gt in enumerate(gts):
+            if "|" not in gt:
+                continue
+            a0, a1 = gt.split("|")
+            sample = samples[sample_idx]
+            if a0 == "1":
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap0"][i] = "1"
+            if a1 == "1":
+                variant2hash[f"{sample}_chr{chrom}_region_{start}-{end}_hap1"][i] = "1"
+
+    variant2hash = {k: "".join(v) for k, v in variant2hash.items()}
+
+    return(variant2hash)
 
 # ---------------------------------------------------------------------
 # Individual hash generation (CPU / GPU)
@@ -136,7 +207,7 @@ def run_hashes(boundaries_file: pathlib.Path,
     if variants_file:
         samples = data_parser.parse_samples(samples_file) if samples_file else data_parser.parse_samples_from_vcf(vcf)
         variants = data_parser.parse_variants_of_interest(variants_file)
-        variant2hash = data_parser.generate_variant_hashes(variants, vcf, chrom, haploblock_boundaries, samples)
+        variant2hash = generate_variant_hashes(variants, vcf, chrom, haploblock_boundaries, samples)
 
     # Cluster and individual hashes
     for (start, end) in haploblock_boundaries:
