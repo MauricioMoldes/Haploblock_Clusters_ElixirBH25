@@ -313,6 +313,12 @@ During the hackathon we ran the pipeline on a Linux-based machine with 8 CPU cor
 This work was supported by ELIXIR, the research infrastructure for life science data, and conducted at the ELIXIR BioHackathon Europe.
 
 
+## Citing this work
+
+Kubica, J., Jethwani, H., Banecki, K. H., Moldes, M., Plewczynski, D., & Busby, B. (2025). Decoding complex genotype-phenotype interactions by discretizing the genome. https://doi.org/10.37044/osf.io/xhkc3_v1
+
+
+
 # References
 
 1. Palsson, G., Hardarson, M.T., Jonsson, H. et al. Complete human recombination maps. Nature 639, 700–707 (2025). https://doi.org/10.1038/s41586-024-08450-5
