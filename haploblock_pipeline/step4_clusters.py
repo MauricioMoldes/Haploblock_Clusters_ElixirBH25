@@ -39,7 +39,8 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
 # ----------------------------------------------------------------------
 def compute_clusters(input_fasta: str, out: str, min_seq_id: float,
                      cov_fraction: float, cov_mode: int,
-                     chrom: str, start: int, end: int):
+                     chrom: str, start: int, end: int,
+                     mmseq_threads: int):
 
     input_fasta = str(pathlib.Path(input_fasta).resolve())
     output_prefix = pathlib.Path(out) / "clusters" / f"chr{chrom}_{start}-{end}"
@@ -61,7 +62,7 @@ def compute_clusters(input_fasta: str, out: str, min_seq_id: float,
         "-c", str(cov_fraction),
         "--cov-mode", str(cov_mode),
         "--remove-tmp-files", "1",
-        "--threads", "1"  # FORCE single-thread per job
+        "--threads", str(mmseq_threads)
     ]
 
     logger.debug("Running: %s", " ".join(cmd))
@@ -101,11 +102,22 @@ def run_clusters(boundaries_file: pathlib.Path,
     haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(variant_counts_file)
 
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
-    logger.info("Computing clusters with MMseqs2 using %s threads...", threads or "auto")
 
-    # Smart scheduling
-    max_workers = threads or max(1, os.cpu_count() - 1)
+    # ------------------------------------------------------------------
+    # SMART CPU SCHEDULING
+    # ------------------------------------------------------------------
+    total_cpus = os.cpu_count() or 1
+    cpu_budget = threads or total_cpus
+
+    # Tune this depending on workload
+    mmseq_threads = 2
+    max_workers = max(1, cpu_budget // mmseq_threads)
+
+    # Optional safety cap
     max_workers = min(max_workers, 8)
+
+    logger.info("CPU budget=%d | mmseq_threads=%d | max_workers=%d",
+                cpu_budget, mmseq_threads, max_workers)
 
     # Retry loop
     retries = 0
@@ -119,6 +131,7 @@ def run_clusters(boundaries_file: pathlib.Path,
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for start, end in remaining_blocks:
                 input_fasta = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
+
                 # Skip if already clustered
                 output_file = out_dir / "clusters" / f"chr{chrom}_{start}-{end}_cluster.tsv"
                 if output_file.exists():
@@ -134,7 +147,8 @@ def run_clusters(boundaries_file: pathlib.Path,
                     cov_mode,
                     chrom,
                     start,
-                    end
+                    end,
+                    mmseq_threads
                 )
                 futures[future] = (start, end)
 
@@ -162,6 +176,7 @@ def run_clusters(boundaries_file: pathlib.Path,
             logger.error("FAILED chr%s:%s-%s", chrom, start, end)
     else:
         logger.info("All haploblocks clustered successfully after %d attempts.", retries + 1)
+
 # ----------------------------------------------------------------------
 # Pipeline wrapper
 # ----------------------------------------------------------------------
@@ -201,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--chr", type=str, required=True, help="Chromosome")
     parser.add_argument("--out", type=pathlib.Path, required=True, help="Output folder")
     parser.add_argument("--cov_mode", type=int, default=0, help="MMSeqs2 coverage mode")
-    parser.add_argument("--threads", type=int, default=None, help="Number of parallel haploblocks")
+    parser.add_argument("--threads", type=int, default=None, help="Total CPU budget")
     parser.add_argument("--max_retries", type=int, default=2, help="Maximum number of retries for failed haploblocks")
 
     args = parser.parse_args()
@@ -215,3 +230,4 @@ if __name__ == "__main__":
         cov_mode=args.cov_mode,
         threads=args.threads
     )
+
