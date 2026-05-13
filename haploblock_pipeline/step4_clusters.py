@@ -110,11 +110,11 @@ def run_clusters(boundaries_file: pathlib.Path,
     cpu_budget = threads or total_cpus
 
     # Tune this depending on workload
-    mmseq_threads = 2
+    mmseq_threads = 4
     max_workers = max(1, cpu_budget // mmseq_threads)
 
     # Optional safety cap
-    max_workers = min(max_workers, 8)
+    #max_workers = min(max_workers, 8)
 
     logger.info("CPU budget=%d | mmseq_threads=%d | max_workers=%d",
                 cpu_budget, mmseq_threads, max_workers)
