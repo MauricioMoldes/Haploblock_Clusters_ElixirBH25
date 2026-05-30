@@ -74,19 +74,28 @@ def compute_clusters(
     output_prefix = str(output_prefix.resolve())
 
     # ------------------------------------------------------------------
-    # CRITICAL FIX:
-    # Dedicated tmp directory per haploblock
-    # Avoids MMseqs tmp contention / filesystem collapse
+    # MMseqs workspace per haploblock (CRITICAL FIX)
     # ------------------------------------------------------------------
+    mmseqs_dir = pathlib.Path("/mmseqs_tmp")
+
+    mmseqs_dir.mkdir(parents=True, exist_ok=True)
+
     tmp_dir = (
-        pathlib.Path(out)
-        / "tmp"
+        mmseqs_dir
         / f"chr{chrom}_{start}_{end}"
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     tmp_dir = str(tmp_dir.resolve())
+
+    logger.info(
+        "MMseqs tmp=%s chr%s:%s-%s",
+        tmp_dir,
+        chrom,
+        start,
+        end
+    )
 
     # ------------------------------------------------------------------
     # Skip existing results
@@ -124,7 +133,16 @@ def compute_clusters(
 
     try:
 
-        subprocess.run(cmd, check=True)
+        env = os.environ.copy()
+        env["TMPDIR"] = tmp_dir
+        env["TMP"] = tmp_dir
+        env["TEMP"] = tmp_dir
+
+        subprocess.run(
+            cmd,
+            check=True,
+            env=env
+        )
 
         runtime = time.time() - t0
 
@@ -143,18 +161,12 @@ def compute_clusters(
         runtime = time.time() - t0
 
         logger.error(
-            (
-                "MMseqs failed chr%s:%s-%s "
-                "| exit_code=%s "
-                "| runtime=%.1fs "
-                "| FASTA=%s"
-            ),
+            "MMseqs failed chr%s:%s-%s | exit_code=%s | runtime=%.1fs",
             chrom,
             start,
             end,
             e.returncode,
-            runtime,
-            input_fasta
+            runtime
         )
 
         return False
@@ -164,17 +176,11 @@ def compute_clusters(
         runtime = time.time() - t0
 
         logger.error(
-            (
-                "Unexpected error chr%s:%s-%s "
-                "| runtime=%.1fs "
-                "| FASTA=%s "
-                "| error=%s"
-            ),
+            "Unexpected error chr%s:%s-%s | runtime=%.1fs | error=%s",
             chrom,
             start,
             end,
             runtime,
-            input_fasta,
             str(e)
         )
 
@@ -196,91 +202,47 @@ def run_clusters(
 ):
 
     out_dir.mkdir(parents=True, exist_ok=True)
-
     (out_dir / "clusters").mkdir(exist_ok=True)
-    (out_dir / "tmp").mkdir(exist_ok=True)
 
-    haploblock_boundaries = (
-        data_parser.parse_haploblock_boundaries(
-            boundaries_file
-        )
+    haploblock_boundaries = data_parser.parse_haploblock_boundaries(
+        boundaries_file
     )
 
-    (
-        haploblock2min_id,
-        haploblock2cov_fraction
-    ) = calculate_mmseq_params(variant_counts_file)
-
-    logger.info(
-        "Found %d haploblocks",
-        len(haploblock_boundaries)
+    haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(
+        variant_counts_file
     )
 
-    # ------------------------------------------------------------------
-    # SMART CPU SCHEDULING
-    # ------------------------------------------------------------------
+    logger.info("Found %d haploblocks", len(haploblock_boundaries))
+
     total_cpus = os.cpu_count() or 1
-
     cpu_budget = threads or total_cpus
 
-    # ------------------------------------------------------------------
-    # PERFORMANCE FIX:
-    #
-    # OLD:
-    #   50 parallel MMseqs jobs × 4 threads
-    #
-    # NEW:
-    #   fewer stronger jobs
-    #
-    # This dramatically reduces:
-    #   - filesystem contention
-    #   - tmp collisions
-    #   - MMseqs DB overhead
-    #   - IO saturation
-    # ------------------------------------------------------------------
     mmseq_threads = 16
-
-    max_workers = max(
-        1,
-        cpu_budget // mmseq_threads
-    )
-
-    # safety cap
+    max_workers = max(1, cpu_budget // mmseq_threads)
     max_workers = min(max_workers, 12)
 
     logger.info(
-        (
-            "CPU budget=%d "
-            "| mmseq_threads=%d "
-            "| max_workers=%d"
-        ),
+        "CPU budget=%d | mmseq_threads=%d | max_workers=%d",
         cpu_budget,
         mmseq_threads,
         max_workers
     )
 
     retries = 0
-
     remaining_blocks = list(haploblock_boundaries)
 
     while remaining_blocks and retries <= max_retries:
 
         logger.info(
-            (
-                "Clustering attempt %d "
-                "for %d haploblocks"
-            ),
+            "Clustering attempt %d for %d haploblocks",
             retries + 1,
             len(remaining_blocks)
         )
 
         futures = {}
-
         failed_blocks = []
 
-        with ThreadPoolExecutor(
-            max_workers=max_workers
-        ) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
 
             for start, end in remaining_blocks:
 
@@ -296,14 +258,6 @@ def run_clusters(
                 )
 
                 if output_file.exists():
-
-                    logger.debug(
-                        "Already clustered: chr%s_%s-%s",
-                        chrom,
-                        start,
-                        end
-                    )
-
                     continue
 
                 future = executor.submit(
@@ -326,110 +280,22 @@ def run_clusters(
                 start, end = futures[fut]
 
                 try:
-
-                    success = fut.result()
-
-                    if not success:
+                    if not fut.result():
                         failed_blocks.append((start, end))
-
                 except Exception as e:
-
-                    logger.error(
-                        (
-                            "Cluster job crashed "
-                            "for chr%s:%s-%s "
-                            "| error=%s"
-                        ),
-                        chrom,
-                        start,
-                        end,
-                        str(e)
-                    )
-
+                    logger.error("Crash chr%s:%s-%s | %s", chrom, start, end, str(e))
                     failed_blocks.append((start, end))
 
         if failed_blocks:
-
             retries += 1
-
-            logger.warning(
-                (
-                    "Retrying %d failed haploblocks "
-                    "(attempt %d)"
-                ),
-                len(failed_blocks),
-                retries + 1
-            )
-
-            # ----------------------------------------------------------
-            # SAFETY CHECK:
-            # prevents endless IO-heavy retry storms
-            # ----------------------------------------------------------
-            if len(failed_blocks) == len(remaining_blocks):
-
-                logger.error(
-                    (
-                        "All remaining blocks failed in this round. "
-                        "Possible filesystem saturation or MMseqs issue."
-                    )
-                )
-
             remaining_blocks = failed_blocks
-
         else:
             break
 
     if remaining_blocks:
-
-        logger.error(
-            "Some haploblocks failed after %d retries:",
-            max_retries
-        )
-
+        logger.error("FAILED blocks remain after retries")
         for start, end in remaining_blocks:
-
-            logger.error(
-                "FAILED chr%s:%s-%s",
-                chrom,
-                start,
-                end
-            )
-
-    else:
-
-        logger.info(
-            (
-                "All haploblocks clustered successfully "
-                "after %d attempts."
-            ),
-            retries + 1
-        )
-
-
-# ----------------------------------------------------------------------
-# Pipeline wrapper
-# ----------------------------------------------------------------------
-def run(
-    boundaries_file,
-    merged_consensus_dir,
-    variant_counts,
-    chr,
-    out,
-    cov_mode=2,
-    threads=None,
-    max_retries=2
-):
-
-    run_clusters(
-        pathlib.Path(boundaries_file),
-        pathlib.Path(merged_consensus_dir),
-        pathlib.Path(variant_counts),
-        str(chr),
-        pathlib.Path(out),
-        cov_mode=cov_mode,
-        threads=threads,
-        max_retries=max_retries
-    )
+            logger.error("chr%s:%s-%s", chrom, start, end)
 
 
 # ----------------------------------------------------------------------
@@ -442,81 +308,26 @@ if __name__ == "__main__":
         level=logging.INFO
     )
 
-    parser = argparse.ArgumentParser(
-        description=(
-            "Cluster haploblock consensus sequences "
-            "using MMseqs2"
-        )
-    )
+    parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--boundaries_file",
-        type=pathlib.Path,
-        required=True,
-        help="TSV file with header (START END)"
-    )
-
-    parser.add_argument(
-        "--merged_consensus_dir",
-        type=pathlib.Path,
-        required=True,
-        help="Folder with merged phased FASTA files"
-    )
-
-    parser.add_argument(
-        "--variant_counts",
-        type=pathlib.Path,
-        required=True,
-        help="TSV file with START END MEAN STDEV"
-    )
-
-    parser.add_argument(
-        "--chr",
-        type=str,
-        required=True,
-        help="Chromosome"
-    )
-
-    parser.add_argument(
-        "--out",
-        type=pathlib.Path,
-        required=True,
-        help="Output folder"
-    )
-
-    parser.add_argument(
-        "--cov_mode",
-        type=int,
-        default=2,
-        help="MMSeqs2 coverage mode"
-    )
-
-    parser.add_argument(
-        "--threads",
-        type=int,
-        default=None,
-        help="Total CPU budget"
-    )
-
-    parser.add_argument(
-        "--max_retries",
-        type=int,
-        default=2,
-        help=(
-            "Maximum number of retries "
-            "for failed haploblocks"
-        )
-    )
+    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True)
+    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True)
+    parser.add_argument("--variant_counts", type=pathlib.Path, required=True)
+    parser.add_argument("--chr", type=str, required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--cov_mode", type=int, default=2)
+    parser.add_argument("--threads", type=int, default=None)
+    parser.add_argument("--max_retries", type=int, default=2)
 
     args = parser.parse_args()
 
-    run(
-        boundaries_file=args.boundaries_file,
-        merged_consensus_dir=args.merged_consensus_dir,
-        variant_counts=args.variant_counts,
-        chr=args.chr,
-        out=args.out,
-        cov_mode=args.cov_mode,
-        threads=args.threads,
-        max_retries=args.max_retries
+    run_clusters(
+        args.boundaries_file,
+        args.merged_consensus_dir,
+        args.variant_counts,
+        args.chr,
+        args.out,
+        args.cov_mode,
+        args.threads,
+        args.max_retries
     )
