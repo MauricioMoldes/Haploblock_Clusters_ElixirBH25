@@ -70,46 +70,39 @@ def compute_clusters(
         / "clusters"
         / f"chr{chrom}_{start}-{end}"
     )
-
     output_prefix = str(output_prefix.resolve())
 
     # ------------------------------------------------------------------
-    # MMseqs workspace per haploblock (CRITICAL FIX)
+    # FIX: Fully isolated MMseqs workspace per haploblock
     # ------------------------------------------------------------------
-    mmseqs_dir = pathlib.Path("/mmseqs_tmp")
-
-    mmseqs_dir.mkdir(parents=True, exist_ok=True)
-
     tmp_dir = (
-        mmseqs_dir
+        pathlib.Path(out)
+        / "mmseqs_tmp"
         / f"chr{chrom}_{start}_{end}"
     )
-
     tmp_dir.mkdir(parents=True, exist_ok=True)
-
     tmp_dir = str(tmp_dir.resolve())
-
-    logger.info(
-        "MMseqs tmp=%s chr%s:%s-%s",
-        tmp_dir,
-        chrom,
-        start,
-        end
-    )
 
     # ------------------------------------------------------------------
     # Skip existing results
     # ------------------------------------------------------------------
     if pathlib.Path(f"{output_prefix}_cluster.tsv").exists():
-
         logger.info(
             "Skipping existing cluster chr%s:%s-%s",
             chrom,
             start,
             end
         )
-
         return True
+
+    # ------------------------------------------------------------------
+    # FIX: force MMseqs to NEVER use /tmp
+    # ------------------------------------------------------------------
+    env = os.environ.copy()
+    env["TMPDIR"] = tmp_dir
+    env["MMSEQS_TMPDIR"] = tmp_dir
+    env["APPTAINER_TMPDIR"] = tmp_dir
+    env["SINGULARITY_TMPDIR"] = tmp_dir
 
     cmd = [
         "mmseqs",
@@ -132,17 +125,7 @@ def compute_clusters(
     logger.debug("Running: %s", " ".join(cmd))
 
     try:
-
-        env = os.environ.copy()
-        env["TMPDIR"] = tmp_dir
-        env["TMP"] = tmp_dir
-        env["TEMP"] = tmp_dir
-
-        subprocess.run(
-            cmd,
-            check=True,
-            env=env
-        )
+        subprocess.run(cmd, check=True, env=env)
 
         runtime = time.time() - t0
 
@@ -161,12 +144,13 @@ def compute_clusters(
         runtime = time.time() - t0
 
         logger.error(
-            "MMseqs failed chr%s:%s-%s | exit_code=%s | runtime=%.1fs",
+            "MMseqs failed chr%s:%s-%s | exit_code=%s | runtime=%.1fs | FASTA=%s",
             chrom,
             start,
             end,
             e.returncode,
-            runtime
+            runtime,
+            input_fasta
         )
 
         return False
@@ -176,11 +160,12 @@ def compute_clusters(
         runtime = time.time() - t0
 
         logger.error(
-            "Unexpected error chr%s:%s-%s | runtime=%.1fs | error=%s",
+            "Unexpected error chr%s:%s-%s | runtime=%.1fs | FASTA=%s | error=%s",
             chrom,
             start,
             end,
             runtime,
+            input_fasta,
             str(e)
         )
 
@@ -202,15 +187,12 @@ def run_clusters(
 ):
 
     out_dir.mkdir(parents=True, exist_ok=True)
+
     (out_dir / "clusters").mkdir(exist_ok=True)
 
-    haploblock_boundaries = data_parser.parse_haploblock_boundaries(
-        boundaries_file
-    )
+    haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
 
-    haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(
-        variant_counts_file
-    )
+    haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(variant_counts_file)
 
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
@@ -218,6 +200,7 @@ def run_clusters(
     cpu_budget = threads or total_cpus
 
     mmseq_threads = 16
+
     max_workers = max(1, cpu_budget // mmseq_threads)
     max_workers = min(max_workers, 12)
 
@@ -280,10 +263,18 @@ def run_clusters(
                 start, end = futures[fut]
 
                 try:
-                    if not fut.result():
+                    success = fut.result()
+                    if not success:
                         failed_blocks.append((start, end))
+
                 except Exception as e:
-                    logger.error("Crash chr%s:%s-%s | %s", chrom, start, end, str(e))
+                    logger.error(
+                        "Cluster job crashed chr%s:%s-%s | error=%s",
+                        chrom,
+                        start,
+                        end,
+                        str(e)
+                    )
                     failed_blocks.append((start, end))
 
         if failed_blocks:
@@ -293,9 +284,40 @@ def run_clusters(
             break
 
     if remaining_blocks:
-        logger.error("FAILED blocks remain after retries")
+
+        logger.error("Some haploblocks failed after %d retries:", max_retries)
+
         for start, end in remaining_blocks:
-            logger.error("chr%s:%s-%s", chrom, start, end)
+            logger.error("FAILED chr%s:%s-%s", chrom, start, end)
+
+    else:
+        logger.info("All haploblocks clustered successfully.")
+
+
+# ----------------------------------------------------------------------
+# Pipeline wrapper
+# ----------------------------------------------------------------------
+def run(
+    boundaries_file,
+    merged_consensus_dir,
+    variant_counts,
+    chr,
+    out,
+    cov_mode=2,
+    threads=None,
+    max_retries=2
+):
+
+    run_clusters(
+        pathlib.Path(boundaries_file),
+        pathlib.Path(merged_consensus_dir),
+        pathlib.Path(variant_counts),
+        str(chr),
+        pathlib.Path(out),
+        cov_mode=cov_mode,
+        threads=threads,
+        max_retries=max_retries
+    )
 
 
 # ----------------------------------------------------------------------
@@ -321,13 +343,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run_clusters(
-        args.boundaries_file,
-        args.merged_consensus_dir,
-        args.variant_counts,
-        args.chr,
-        args.out,
-        args.cov_mode,
-        args.threads,
-        args.max_retries
+    run(
+        boundaries_file=args.boundaries_file,
+        merged_consensus_dir=args.merged_consensus_dir,
+        variant_counts=args.variant_counts,
+        chr=args.chr,
+        out=args.out,
+        cov_mode=args.cov_mode,
+        threads=args.threads,
+        max_retries=args.max_retries
     )
