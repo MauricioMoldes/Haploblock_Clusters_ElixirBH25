@@ -5,6 +5,7 @@ import logging
 import pathlib
 import argparse
 import subprocess
+import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import data_parser
@@ -47,7 +48,7 @@ def calculate_mmseq_params(variant_counts_file: pathlib.Path):
 
 
 # ----------------------------------------------------------------------
-# Run clustering per FASTA
+# Run clustering per FASTA (STABLE v2 FIXED)
 # ----------------------------------------------------------------------
 def compute_clusters(
     input_fasta: str,
@@ -73,7 +74,7 @@ def compute_clusters(
     output_prefix = str(output_prefix.resolve())
 
     # ------------------------------------------------------------------
-    # FIX: Fully isolated MMseqs workspace per haploblock
+    # isolated MMseqs workspace
     # ------------------------------------------------------------------
     tmp_dir = (
         pathlib.Path(out)
@@ -84,19 +85,14 @@ def compute_clusters(
     tmp_dir = str(tmp_dir.resolve())
 
     # ------------------------------------------------------------------
-    # Skip existing results
+    # skip if done
     # ------------------------------------------------------------------
     if pathlib.Path(f"{output_prefix}_cluster.tsv").exists():
-        logger.info(
-            "Skipping existing cluster chr%s:%s-%s",
-            chrom,
-            start,
-            end
-        )
+        logger.info("Skipping chr%s:%s-%s", chrom, start, end)
         return True
 
     # ------------------------------------------------------------------
-    # FIX: force MMseqs to NEVER use /tmp
+    # force isolated env
     # ------------------------------------------------------------------
     env = os.environ.copy()
     env["TMPDIR"] = tmp_dir
@@ -124,56 +120,63 @@ def compute_clusters(
 
     logger.debug("Running: %s", " ".join(cmd))
 
+    # ================================================================
+    # 🔥 STABLE EXECUTION (PROCESS GROUP CONTROL)
+    # ================================================================
     try:
-        subprocess.run(cmd, check=True, env=env)
+
+        p = subprocess.Popen(
+            cmd,
+            env=env,
+            preexec_fn=os.setsid
+        )
+
+        timeout_sec = 3600  # 1h per haploblock safety cap
+
+        while True:
+
+            if p.poll() is not None:
+                break
+
+            if time.time() - t0 > timeout_sec:
+                logger.error("TIMEOUT chr%s:%s-%s", chrom, start, end)
+                os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                return False
+
+            time.sleep(5)
+
+        returncode = p.poll()
+
+        if returncode != 0:
+            logger.error(
+                "MMseqs failed chr%s:%s-%s | exit=%s",
+                chrom, start, end, returncode
+            )
+            return False
 
         runtime = time.time() - t0
 
         logger.info(
-            "Finished clustering chr%s:%s-%s | runtime=%.1fs",
-            chrom,
-            start,
-            end,
-            runtime
+            "Finished chr%s:%s-%s | runtime=%.1fs",
+            chrom, start, end, runtime
         )
 
         return True
-
-    except subprocess.CalledProcessError as e:
-
-        runtime = time.time() - t0
-
-        logger.error(
-            "MMseqs failed chr%s:%s-%s | exit_code=%s | runtime=%.1fs | FASTA=%s",
-            chrom,
-            start,
-            end,
-            e.returncode,
-            runtime,
-            input_fasta
-        )
-
-        return False
 
     except Exception as e:
 
         runtime = time.time() - t0
 
         logger.error(
-            "Unexpected error chr%s:%s-%s | runtime=%.1fs | FASTA=%s | error=%s",
-            chrom,
-            start,
-            end,
-            runtime,
-            input_fasta,
-            str(e)
+            "Unexpected error chr%s:%s-%s | runtime=%.1fs | error=%s",
+            chrom, start, end, runtime, str(e)
         )
 
         return False
 
 
 # ----------------------------------------------------------------------
-# Main workflow
+# Main workflow (unchanged logic)
 # ----------------------------------------------------------------------
 def run_clusters(
     boundaries_file: pathlib.Path,
@@ -187,7 +190,6 @@ def run_clusters(
 ):
 
     out_dir.mkdir(parents=True, exist_ok=True)
-
     (out_dir / "clusters").mkdir(exist_ok=True)
 
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
@@ -196,59 +198,35 @@ def run_clusters(
 
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
 
-    total_cpus = os.cpu_count() or 1
-    cpu_budget = threads or total_cpus
-
+    cpu_budget = threads or (os.cpu_count() or 1)
     mmseq_threads = 16
 
     max_workers = max(1, cpu_budget // mmseq_threads)
     max_workers = min(max_workers, 12)
 
     logger.info(
-        "CPU budget=%d | mmseq_threads=%d | max_workers=%d",
-        cpu_budget,
-        mmseq_threads,
-        max_workers
+        "CPU=%d mmseq_threads=%d workers=%d",
+        cpu_budget, mmseq_threads, max_workers
     )
+
+    remaining_blocks = sorted(haploblock_boundaries, key=lambda x: x[1] - x[0])
 
     retries = 0
-    #remaining_blocks = list(haploblock_boundaries)
-    remaining_blocks = sorted(
-    haploblock_boundaries,
-    key=lambda x: x[1] - x[0]
-    )
+
     while remaining_blocks and retries <= max_retries:
 
-        logger.info(
-            "Clustering attempt %d for %d haploblocks",
-            retries + 1,
-            len(remaining_blocks)
-        )
-
         futures = {}
-        failed_blocks = []
+        failed = []
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
 
             for start, end in remaining_blocks:
 
-                input_fasta = (
-                    merged_consensus_dir
-                    / f"chr{chrom}_region_{start}-{end}.fa"
-                )
+                inp = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
 
-                output_file = (
-                    out_dir
-                    / "clusters"
-                    / f"chr{chrom}_{start}-{end}_cluster.tsv"
-                )
-
-                if output_file.exists():
-                    continue
-
-                future = executor.submit(
+                fut = ex.submit(
                     compute_clusters,
-                    str(input_fasta),
+                    str(inp),
                     str(out_dir),
                     haploblock2min_id[(start, end)],
                     haploblock2cov_fraction[(start, end)],
@@ -259,100 +237,27 @@ def run_clusters(
                     mmseq_threads
                 )
 
-                futures[future] = (start, end)
+                futures[fut] = (start, end)
 
-            for fut in as_completed(futures):
+            for f in as_completed(futures):
 
-                start, end = futures[fut]
+                start, end = futures[f]
 
                 try:
-                    success = fut.result()
-                    if not success:
-                        failed_blocks.append((start, end))
+                    if not f.result():
+                        failed.append((start, end))
+                except Exception:
+                    failed.append((start, end))
 
-                except Exception as e:
-                    logger.error(
-                        "Cluster job crashed chr%s:%s-%s | error=%s",
-                        chrom,
-                        start,
-                        end,
-                        str(e)
-                    )
-                    failed_blocks.append((start, end))
-
-        if failed_blocks:
+        if failed:
             retries += 1
-            remaining_blocks = failed_blocks
+            remaining_blocks = failed
         else:
             break
 
     if remaining_blocks:
-
-        logger.error("Some haploblocks failed after %d retries:", max_retries)
-
-        for start, end in remaining_blocks:
-            logger.error("FAILED chr%s:%s-%s", chrom, start, end)
-
+        logger.error("FAILED BLOCKS:")
+        for s, e in remaining_blocks:
+            logger.error("%s:%s-%s", chrom, s, e)
     else:
-        logger.info("All haploblocks clustered successfully.")
-
-
-# ----------------------------------------------------------------------
-# Pipeline wrapper
-# ----------------------------------------------------------------------
-def run(
-    boundaries_file,
-    merged_consensus_dir,
-    variant_counts,
-    chr,
-    out,
-    cov_mode=2,
-    threads=None,
-    max_retries=2
-):
-
-    run_clusters(
-        pathlib.Path(boundaries_file),
-        pathlib.Path(merged_consensus_dir),
-        pathlib.Path(variant_counts),
-        str(chr),
-        pathlib.Path(out),
-        cov_mode=cov_mode,
-        threads=threads,
-        max_retries=max_retries
-    )
-
-
-# ----------------------------------------------------------------------
-# CLI
-# ----------------------------------------------------------------------
-if __name__ == "__main__":
-
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO
-    )
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True)
-    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True)
-    parser.add_argument("--variant_counts", type=pathlib.Path, required=True)
-    parser.add_argument("--chr", type=str, required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    parser.add_argument("--cov_mode", type=int, default=2)
-    parser.add_argument("--threads", type=int, default=None)
-    parser.add_argument("--max_retries", type=int, default=2)
-
-    args = parser.parse_args()
-
-    run(
-        boundaries_file=args.boundaries_file,
-        merged_consensus_dir=args.merged_consensus_dir,
-        variant_counts=args.variant_counts,
-        chr=args.chr,
-        out=args.out,
-        cov_mode=args.cov_mode,
-        threads=args.threads,
-        max_retries=args.max_retries
-    )
+        logger.info("ALL DONE")
