@@ -1,4 +1,4 @@
-> Elixir BioHackathon November 3-7, 2025
+> Genomic Cluster Engine
 
 # Haploblock_Clusters_ElixirBH25
 
