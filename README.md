@@ -1,6 +1,4 @@
-> Genomic Cluster Engine
-
-# Haploblock_Clusters_ElixirBH25
+# Genomic Cluster Engine
 
 This pipeline generates recombination-defined genomic hashes, unique identifiers that contain haplotype-resolved variant information. Every hash is a unique representation of an individual's genotype with a distinct combination of variants segragated across haploblocks. We also provide an example model for a hash-based genotype-to-phenotype mapping.
 
