@@ -1,6 +1,4 @@
-> Elixir BioHackathon November 3-7, 2025
-
-# Haploblock_Clusters_ElixirBH25
+# Genomic Cluster Engine
 
 This pipeline generates recombination-defined genomic hashes, unique identifiers that contain haplotype-resolved variant information. Every hash is a unique representation of an individual's genotype with a distinct combination of variants segragated across haploblocks. We also provide an example model for a hash-based genotype-to-phenotype mapping.
 
@@ -311,6 +309,12 @@ During the hackathon we ran the pipeline on a Linux-based machine with 8 CPU cor
 # Acknowlegdements
 
 This work was supported by ELIXIR, the research infrastructure for life science data, and conducted at the ELIXIR BioHackathon Europe.
+
+
+## Citing this work
+
+Kubica, J., Jethwani, H., Banecki, K. H., Moldes, M., Plewczynski, D., & Busby, B. (2025). Decoding complex genotype-phenotype interactions by discretizing the genome. https://doi.org/10.37044/osf.io/xhkc3_v1
+
 
 
 # References
