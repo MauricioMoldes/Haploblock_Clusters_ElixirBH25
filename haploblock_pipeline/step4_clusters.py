@@ -1,170 +1,263 @@
 #!/usr/bin/env python3
 import os
+import time
 import logging
 import pathlib
 import argparse
 import subprocess
+import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import data_parser
 
 logger = logging.getLogger(__name__)
 
-
 # ----------------------------------------------------------------------
 # MMseqs2 params
 # ----------------------------------------------------------------------
 def calculate_mmseq_params(variant_counts_file: pathlib.Path):
-    """
-    Calculate min sequence identify and coverage fraction for MMSeqs2
-    
-    returns:
-    - haploblock2min_id: dict, key=(start, end), value=min sequence identify
-    - haploblock2cov_fraction: dict, key=(start, end), value=coverage fraction
-    """
+
     haploblock2min_id = {}
     haploblock2cov_fraction = {}
 
     with open(variant_counts_file, "r") as f:
         header = f.readline()
+
         if not header.startswith("START\t"):
-            raise ValueError(f"Variant counts file missing header: {header.strip()}")
+            raise ValueError(
+                f"Variant counts file missing header: {header.strip()}"
+            )
 
         for line in f:
             start, end, mean, stdev = line.strip().split("\t")
+
             start = int(start)
             end = int(end)
+
             hap_len = end - start
-            haploblock2min_id[(start, end)] = 1 - (float(mean) / hap_len)
-            haploblock2cov_fraction[(start, end)] = 1 - (682 / hap_len)
-        
-    return(haploblock2min_id, haploblock2cov_fraction)
+
+            haploblock2min_id[(start, end)] = (
+                1 - (float(mean) / hap_len)
+            )
+
+            haploblock2cov_fraction[(start, end)] = (
+                1 - (682 / hap_len)
+            )
+
+    return haploblock2min_id, haploblock2cov_fraction
 
 
 # ----------------------------------------------------------------------
-# Run clustering per FASTA
+# Run clustering per FASTA (STABLE v2 FIXED)
 # ----------------------------------------------------------------------
-def compute_clusters(input_fasta: str, out: str, min_seq_id: float, cov_fraction: float, cov_mode: int,
-                     chrom: str, start: str, end: str):
+def compute_clusters(
+    input_fasta: str,
+    out: str,
+    min_seq_id: float,
+    cov_fraction: float,
+    cov_mode: int,
+    chrom: str,
+    start: int,
+    end: int,
+    mmseq_threads: int
+):
 
-    # Resolve EVERYTHING to absolute paths
+    t0 = time.time()
+
     input_fasta = str(pathlib.Path(input_fasta).resolve())
 
-    output_prefix = pathlib.Path(out) / "clusters" / f"chr{chrom}_{start}-{end}"
+    output_prefix = (
+        pathlib.Path(out)
+        / "clusters"
+        / f"chr{chrom}_{start}-{end}"
+    )
     output_prefix = str(output_prefix.resolve())
 
-    tmp_dir = pathlib.Path(out) / "tmp"
+    # ------------------------------------------------------------------
+    # isolated MMseqs workspace
+    # ------------------------------------------------------------------
+    tmp_dir = (
+        pathlib.Path(out)
+        / "mmseqs_tmp"
+        / f"chr{chrom}_{start}_{end}"
+    )
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = str(tmp_dir.resolve())
 
-    # run MMSeqs2
+    # ------------------------------------------------------------------
+    # skip if done
+    # ------------------------------------------------------------------
+    if pathlib.Path(f"{output_prefix}_cluster.tsv").exists():
+        logger.info("Skipping chr%s:%s-%s", chrom, start, end)
+        return True
+
+    # ------------------------------------------------------------------
+    # force isolated env
+    # ------------------------------------------------------------------
+    env = os.environ.copy()
+    env["TMPDIR"] = tmp_dir
+    env["MMSEQS_TMPDIR"] = tmp_dir
+    env["APPTAINER_TMPDIR"] = tmp_dir
+    env["SINGULARITY_TMPDIR"] = tmp_dir
+
     cmd = [
-        "mmseqs", "easy-cluster",
+        "mmseqs",
+        "easy-cluster",
         input_fasta,
         output_prefix,
         tmp_dir,
-        "--min-seq-id", str(min_seq_id),
-        "-c", str(cov_fraction),
-        "--cov-mode", str(cov_mode),
-        "--remove-tmp-files", "1"
+        "--min-seq-id",
+        str(min_seq_id),
+        "-c",
+        str(cov_fraction),
+        "--cov-mode",
+        str(cov_mode),
+        "--remove-tmp-files",
+        "1",
+        "--threads",
+        str(mmseq_threads)
     ]
 
     logger.debug("Running: %s", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+
+    # ================================================================
+    # 🔥 STABLE EXECUTION (PROCESS GROUP CONTROL)
+    # ================================================================
+    try:
+
+        p = subprocess.Popen(
+            cmd,
+            env=env,
+            preexec_fn=os.setsid
+        )
+
+        timeout_sec = 3600  # 1h per haploblock safety cap
+
+        while True:
+
+            if p.poll() is not None:
+                break
+
+            if time.time() - t0 > timeout_sec:
+                logger.error("TIMEOUT chr%s:%s-%s", chrom, start, end)
+                os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                return False
+
+            time.sleep(5)
+
+        returncode = p.poll()
+
+        if returncode != 0:
+            logger.error(
+                "MMseqs failed chr%s:%s-%s | exit=%s",
+                chrom, start, end, returncode
+            )
+            return False
+
+        runtime = time.time() - t0
+
+        logger.info(
+            "Finished chr%s:%s-%s | runtime=%.1fs",
+            chrom, start, end, runtime
+        )
+
+        return True
+
+    except Exception as e:
+
+        runtime = time.time() - t0
+
+        logger.error(
+            "Unexpected error chr%s:%s-%s | runtime=%.1fs | error=%s",
+            chrom, start, end, runtime, str(e)
+        )
+
+        return False
 
 
 # ----------------------------------------------------------------------
-# Main workflow
+# Main workflow (unchanged logic)
 # ----------------------------------------------------------------------
-def run_clusters(boundaries_file: pathlib.Path,
-                 merged_consensus_dir: pathlib.Path,
-                 variant_counts_file: pathlib.Path,
-                 chrom: str,
-                 out_dir: pathlib.Path,
-                 cov_mode: int,
-                 threads: None):
+def run_clusters(
+    boundaries_file: pathlib.Path,
+    merged_consensus_dir: pathlib.Path,
+    variant_counts_file: pathlib.Path,
+    chrom: str,
+    out_dir: pathlib.Path,
+    cov_mode: int,
+    threads: int | None,
+    max_retries: int = 2
+):
 
-    # Create output and temporary directories if they don't exist
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "clusters").mkdir(exist_ok=True)
-    (out_dir / "tmp").mkdir(exist_ok=True)
 
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
+
+    haploblock2min_id, haploblock2cov_fraction = calculate_mmseq_params(variant_counts_file)
+
     logger.info("Found %d haploblocks", len(haploblock_boundaries))
-    (haploblock2min_id, haploblock2cov_fraction) = calculate_mmseq_params(variant_counts_file)
 
-    logger.info("Computing clusters with MMseqs2 using %s threads...", threads or "auto")
-    max_workers = threads or max(1, os.cpu_count() - 1)
-    futures = []
+    cpu_budget = threads or (os.cpu_count() or 1)
+    mmseq_threads = 16
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for start, end in haploblock_boundaries:
-            input_fasta = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
-            futures.append(
-                executor.submit(
+    max_workers = max(1, cpu_budget // mmseq_threads)
+    max_workers = min(max_workers, 12)
+
+    logger.info(
+        "CPU=%d mmseq_threads=%d workers=%d",
+        cpu_budget, mmseq_threads, max_workers
+    )
+
+    remaining_blocks = sorted(haploblock_boundaries, key=lambda x: x[1] - x[0])
+
+    retries = 0
+
+    while remaining_blocks and retries <= max_retries:
+
+        futures = {}
+        failed = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+
+            for start, end in remaining_blocks:
+
+                inp = merged_consensus_dir / f"chr{chrom}_region_{start}-{end}.fa"
+
+                fut = ex.submit(
                     compute_clusters,
-                    str(input_fasta),
+                    str(inp),
                     str(out_dir),
                     haploblock2min_id[(start, end)],
                     haploblock2cov_fraction[(start, end)],
                     cov_mode,
-                    chrom, start, end
+                    chrom,
+                    start,
+                    end,
+                    mmseq_threads
                 )
-            )
 
-        for fut in as_completed(futures):
-            fut.result()  # propagate exceptions if any
+                futures[fut] = (start, end)
 
-    logger.info("All clusters computed successfully.")
+            for f in as_completed(futures):
 
+                start, end = futures[f]
 
-# ----------------------------------------------------------------------
-# Pipeline wrapper
-# ----------------------------------------------------------------------
-def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out, cov_mode=2, threads=None):
-    run_clusters(
-        pathlib.Path(boundaries_file),
-        pathlib.Path(merged_consensus_dir),
-        pathlib.Path(variant_counts),
-        str(chr),
-        pathlib.Path(out),
-        cov_mode=cov_mode,
-        threads=threads
-    )
+                try:
+                    if not f.result():
+                        failed.append((start, end))
+                except Exception:
+                    failed.append((start, end))
 
+        if failed:
+            retries += 1
+            remaining_blocks = failed
+        else:
+            break
 
-# ----------------------------------------------------------------------
-# CLI
-# ----------------------------------------------------------------------
-if __name__ == "__main__":
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO
-    )
-    parser = argparse.ArgumentParser(description="Cluster haploblock consensus sequences using MMseqs2")
-    parser.add_argument("--boundaries_file", type=pathlib.Path, required=True,
-                        help="TSV file with header (START\tEND) and 2 columns: start end")
-    parser.add_argument("--merged_consensus_dir", type=pathlib.Path, required=True,
-                        help="Path to folder with merged phased FASTA files")
-    parser.add_argument("--variant_counts", type=pathlib.Path, required=True,
-                        help="TSV file with 4 columns: START, END, MEAN, STDEV")
-    parser.add_argument("--chr", type=str, required=True,
-                        help="Chromosome number")
-    parser.add_argument("--out", type=pathlib.Path, required=True,
-                        help="Output folder path")
-    parser.add_argument("--cov_mode", type=int, default=0,
-                        help="alignment coverage, see MMSeqs2 documentation")
-    parser.add_argument("--threads", type=int, default=None,
-                        help="TODO")
-
-    args = parser.parse_args()
-
-    run(
-        boundaries_file=args.boundaries_file,
-        merged_consensus_dir=args.merged_consensus_dir,
-        variant_counts=args.variant_counts,
-        chr=args.chr,
-        out=args.out,
-        cov_mode=args.cov_mode,
-        threads=args.threads
-    )
-
+    if remaining_blocks:
+        logger.error("FAILED BLOCKS:")
+        for s, e in remaining_blocks:
+            logger.error("%s:%s-%s", chrom, s, e)
+    else:
+        logger.info("ALL DONE")

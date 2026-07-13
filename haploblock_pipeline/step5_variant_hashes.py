@@ -29,6 +29,24 @@ def _make_hash_gpu(indices: cp.ndarray, width: int) -> cp.ndarray:
     bin_array = ((indices[:, None] & (1 << cp.arange(width)[::-1])) > 0).astype(cp.uint8)
     return bin_array
 
+def chromosome_to_int(chrom: str) -> int:
+    chrom = chrom.replace("chr", "")  # safety
+
+    if chrom.isdigit():
+        return int(chrom)
+
+    mapping = {
+        "X": 23,
+        "Y": 24,
+        "M": 25,
+        "MT": 25
+    }
+
+    if chrom in mapping:
+        return mapping[chrom]
+
+    raise ValueError(f"Unknown chromosome: {chrom}")
+
 # ---------------------------------------------------------------------
 # Hash generators
 # ---------------------------------------------------------------------
@@ -188,7 +206,7 @@ def run_hashes(boundaries_file: pathlib.Path,
             logger.warning(f"GPU not available: {e}. Falling back to CPU.")
             gpu = False
 
-    chr_hash = np.binary_repr(int(chrom))
+    chr_hash = np.binary_repr(chromosome_to_int(chrom), width=5)
 
     # Haploblock hashes
     haploblock_boundaries = data_parser.parse_haploblock_boundaries(boundaries_file)
