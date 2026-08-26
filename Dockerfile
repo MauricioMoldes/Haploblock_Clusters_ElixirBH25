@@ -1,8 +1,6 @@
 FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
-
 # Set working directory
 WORKDIR /app
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-dev \
@@ -21,53 +19,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
-
 # -------------------------------------------------------------------
 # Install HTSlib, Samtools, and BCFtools from source
 # -------------------------------------------------------------------
 WORKDIR /opt
-
 RUN wget https://github.com/samtools/samtools/releases/download/1.22.1/samtools-1.22.1.tar.bz2 && \
     wget https://github.com/samtools/bcftools/releases/download/1.22/bcftools-1.22.tar.bz2 && \
     wget https://github.com/samtools/htslib/releases/download/1.22.1/htslib-1.22.1.tar.bz2
-
 RUN tar -xvf samtools-1.22.1.tar.bz2 && \
     tar -xvf bcftools-1.22.tar.bz2 && \
     tar -xvf htslib-1.22.1.tar.bz2
-
 RUN cd /opt/htslib-1.22.1 && ./configure && make && make install && \
     cd /opt/samtools-1.22.1 && ./configure && make && make install && \
     cd /opt/bcftools-1.22 && ./configure && make && make install
-
 RUN ln -s /opt/samtools-1.22.1/samtools /usr/bin/samtools && \
     ln -s /opt/bcftools-1.22/bcftools /usr/bin/bcftools && \
     ln -s /opt/htslib-1.22.1/bgzip /usr/bin/bgzip && \
     ln -s /opt/htslib-1.22.1/tabix /usr/bin/tabix
-
 # -------------------------------------------------------------------
 # Install MMSeqs2
 # -------------------------------------------------------------------
 RUN wget https://mmseqs.com/latest/mmseqs-linux-avx2.tar.gz -O /opt/mmseqs-linux.tar.gz && \
     tar -xvzf /opt/mmseqs-linux.tar.gz -C /opt && \
     ln -s /opt/mmseqs/bin/mmseqs /usr/bin/mmseqs
-
 # -------------------------------------------------------------------
-# Clone repo
+# Clone repo - main branch of your fork, which now includes the GPU
+# acceleration work merged in from the gpu branch. -b main is
+# explicit here rather than relying on whatever the remote's default
+# branch happens to resolve to.
 # -------------------------------------------------------------------
 WORKDIR /app
 RUN git clone https://github.com/collaborativebioinformatics/Haploblock_Clusters_ElixirBH25.git
-#RUN git clone https://github.com/MauricioMoldes/Haploblock_Clusters_ElixirBH25.git
-
 WORKDIR /app/Haploblock_Clusters_ElixirBH25
-
 # Install Python dependencies (including GPU CuPy)
 COPY requirements.txt .
-
 # Replace CuPy with the prebuilt CUDA-accelerated version
 RUN sed -i 's/cupy/cupy-cuda12x/' requirements.txt
-
 RUN pip install --no-cache-dir -r requirements.txt
-
 # -------------------------------------------------------------------
 # Download data
 # -------------------------------------------------------------------
@@ -82,6 +70,4 @@ RUN mkdir -p /app/Haploblock_Clusters_ElixirBH25/data && \
     bgzip chr6.fa || true && \
     gzip -d Halldorsson2019/aau1043_datas3.gz || true && \
     echo "All data successfully downloaded."
-
 CMD ["/bin/bash"]
-
