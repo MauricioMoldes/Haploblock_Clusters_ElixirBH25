@@ -13,6 +13,34 @@ import data_parser
 logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
+# Clustering mode -> MMseqs2 workflow
+#   cluster  : mmseqs easy-cluster  (cascaded clustering; production default)
+#   linclust : mmseqs easy-linclust (linear-time, k-mer based heuristic)
+# Both write <prefix>_cluster.tsv / _rep_seq.fasta / _all_seqs.fasta, so
+# step 5 reads either unchanged. Cluster membership can DIFFER between
+# the two modes - never point linclust at a production out_dir.
+# ----------------------------------------------------------------------
+CLUSTER_MODES = {
+    "cluster": "easy-cluster",
+    "linclust": "easy-linclust",
+}
+DEFAULT_CLUSTER_MODE = "cluster"
+
+
+def _resolve_cluster_mode(cluster_mode):
+    """Normalize and validate the mode; None means the default."""
+    if cluster_mode is None:
+        return DEFAULT_CLUSTER_MODE
+    mode = str(cluster_mode).strip().lower()
+    if mode not in CLUSTER_MODES:
+        raise ValueError(
+            f"Unknown cluster_mode {cluster_mode!r}; "
+            f"expected one of {sorted(CLUSTER_MODES)}"
+        )
+    return mode
+
+
+# ----------------------------------------------------------------------
 # MMseqs2 params
 # ----------------------------------------------------------------------
 def calculate_mmseq_params(variant_counts_file: pathlib.Path):
@@ -59,10 +87,14 @@ def compute_clusters(
     chrom: str,
     start: int,
     end: int,
-    mmseq_threads: int
+    mmseq_threads: int,
+    cluster_mode: str = DEFAULT_CLUSTER_MODE
 ):
 
     t0 = time.time()
+
+    cluster_mode = _resolve_cluster_mode(cluster_mode)
+    mmseqs_workflow = CLUSTER_MODES[cluster_mode]
 
     input_fasta = str(pathlib.Path(input_fasta).resolve())
 
@@ -86,9 +118,14 @@ def compute_clusters(
 
     # ------------------------------------------------------------------
     # skip if done
+    # (the skip check does not know which mode produced the existing
+    # file - use a separate out_dir per mode)
     # ------------------------------------------------------------------
     if pathlib.Path(f"{output_prefix}_cluster.tsv").exists():
-        logger.info("Skipping chr%s:%s-%s", chrom, start, end)
+        logger.info(
+            "Skipping chr%s:%s-%s (existing output; requested mode=%s)",
+            chrom, start, end, cluster_mode
+        )
         return True
 
     # ------------------------------------------------------------------
@@ -102,7 +139,7 @@ def compute_clusters(
 
     cmd = [
         "mmseqs",
-        "easy-cluster",
+        mmseqs_workflow,
         input_fasta,
         output_prefix,
         tmp_dir,
@@ -118,7 +155,7 @@ def compute_clusters(
         str(mmseq_threads)
     ]
 
-    logger.debug("Running: %s", " ".join(cmd))
+    logger.debug("Running (%s): %s", cluster_mode, " ".join(cmd))
 
     # ================================================================
     # 🔥 STABLE EXECUTION (PROCESS GROUP CONTROL)
@@ -149,16 +186,16 @@ def compute_clusters(
 
         if returncode != 0:
             logger.error(
-                "MMseqs failed chr%s:%s-%s | exit=%s",
-                chrom, start, end, returncode
+                "MMseqs failed chr%s:%s-%s | mode=%s | exit=%s",
+                chrom, start, end, cluster_mode, returncode
             )
             return False
 
         runtime = time.time() - t0
 
         logger.info(
-            "Finished chr%s:%s-%s | runtime=%.1fs",
-            chrom, start, end, runtime
+            "Finished chr%s:%s-%s | mode=%s | runtime=%.1fs",
+            chrom, start, end, cluster_mode, runtime
         )
 
         return True
@@ -168,8 +205,8 @@ def compute_clusters(
         runtime = time.time() - t0
 
         logger.error(
-            "Unexpected error chr%s:%s-%s | runtime=%.1fs | error=%s",
-            chrom, start, end, runtime, str(e)
+            "Unexpected error chr%s:%s-%s | mode=%s | runtime=%.1fs | error=%s",
+            chrom, start, end, cluster_mode, runtime, str(e)
         )
 
         return False
@@ -186,8 +223,11 @@ def run_clusters(
     out_dir: pathlib.Path,
     cov_mode: int,
     threads: int | None,
-    max_retries: int = 2
+    max_retries: int = 2,
+    cluster_mode: str = DEFAULT_CLUSTER_MODE
 ):
+
+    cluster_mode = _resolve_cluster_mode(cluster_mode)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "clusters").mkdir(exist_ok=True)
@@ -205,8 +245,8 @@ def run_clusters(
     max_workers = min(max_workers, 12)
 
     logger.info(
-        "CPU=%d mmseq_threads=%d workers=%d",
-        cpu_budget, mmseq_threads, max_workers
+        "CPU=%d mmseq_threads=%d workers=%d cluster_mode=%s",
+        cpu_budget, mmseq_threads, max_workers, cluster_mode
     )
 
     remaining_blocks = sorted(haploblock_boundaries, key=lambda x: x[1] - x[0])
@@ -234,7 +274,8 @@ def run_clusters(
                     chrom,
                     start,
                     end,
-                    mmseq_threads
+                    mmseq_threads,
+                    cluster_mode
                 )
 
                 futures[fut] = (start, end)
@@ -267,12 +308,17 @@ def run_clusters(
 # Wrapper for pipeline
 # ----------------------------------------------------------------------
 def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out,
-        threads=None, cov_mode=0, gpu=None, gpu_id=None, max_retries=2):
+        threads=None, cov_mode=0, gpu=None, gpu_id=None, max_retries=2,
+        cluster_mode=DEFAULT_CLUSTER_MODE):
     """
     gpu/gpu_id accepted-and-ignored: MMseqs2 has no GPU-accelerated
     clustering path (only its search/profile-alignment functions do),
     so this step stays CPU-only regardless of pipeline.gpu in the config.
 
+    cluster_mode: "cluster" (mmseqs easy-cluster, default, production) or
+    "linclust" (mmseqs easy-linclust). Use a separate `out` directory for
+    linclust - cluster membership may differ from easy-cluster, and the
+    skip-if-done check would otherwise reuse existing output.
     """
     run_clusters(
         boundaries_file=pathlib.Path(boundaries_file),
@@ -283,4 +329,47 @@ def run(boundaries_file, merged_consensus_dir, variant_counts, chr, out,
         cov_mode=cov_mode,
         threads=threads,
         max_retries=max_retries,
+        cluster_mode=cluster_mode,
+    )
+
+
+# ----------------------------------------------------------------------
+# CLI (standalone use / comparison runs without main.py)
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="step4_clusters",
+        description="Cluster merged haploblock consensus FASTAs with MMseqs2 (Step 4)"
+    )
+    parser.add_argument('--boundaries_file', type=pathlib.Path, required=True)
+    parser.add_argument('--merged_consensus_dir', type=pathlib.Path, required=True)
+    parser.add_argument('--variant_counts', type=pathlib.Path, required=True)
+    parser.add_argument('--chr', type=str, required=True)
+    parser.add_argument('--out', type=pathlib.Path, required=True,
+                        help="general out_dir (a clusters/ subdirectory is created under it)")
+    parser.add_argument('--threads', type=int, default=None)
+    parser.add_argument('--cov_mode', type=int, default=0)
+    parser.add_argument('--cluster_mode', choices=sorted(CLUSTER_MODES),
+                        default=DEFAULT_CLUSTER_MODE)
+    parser.add_argument('--max_retries', type=int, default=2)
+
+    args = parser.parse_args()
+
+    run(
+        boundaries_file=args.boundaries_file,
+        merged_consensus_dir=args.merged_consensus_dir,
+        variant_counts=args.variant_counts,
+        chr=args.chr,
+        out=args.out,
+        threads=args.threads,
+        cov_mode=args.cov_mode,
+        max_retries=args.max_retries,
+        cluster_mode=args.cluster_mode,
     )

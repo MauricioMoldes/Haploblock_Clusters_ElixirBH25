@@ -54,6 +54,19 @@ def main():
 
     logger.info(f"GPU enabled: {use_gpu} (gpu_id={gpu_id})")
 
+    # ----------------------------
+    # Step 4 clustering mode
+    #   pipeline.cluster_mode: cluster (default, mmseqs easy-cluster)
+    #                          | linclust (mmseqs easy-linclust)
+    # ----------------------------
+    cluster_mode = cfg["pipeline"].get("cluster_mode", "cluster")
+    logger.info(f"Cluster mode: {cluster_mode}")
+    if str(cluster_mode).strip().lower() != "cluster":
+        logger.warning(
+            "cluster_mode != 'cluster': use a separate outputs.out_dir and "
+            "outputs.clusters_dir so production clusters are not reused or mixed"
+        )
+
 
     # ----------------------------
     # Threads configuration
@@ -110,7 +123,8 @@ def main():
                 variant_counts=cfg["outputs"]["variant_counts"],
                 chr=cfg["chromosome"]["number"],
                 out=Path(cfg["outputs"]["out_dir"]),
-                threads=threads
+                threads=threads,
+                cluster_mode=cluster_mode
             )
 
         # ---- STEP 5 ---------------------------------------------------------
